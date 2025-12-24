@@ -19,17 +19,17 @@ You don't need to manually edit `Cargo.toml` or create tags. Follow these steps:
 ### 1. Preview the Release (Dry Run)
 Always run a dry run first to see what changes will be made:
 ```powershell
-# Bump patch version (0.1.1 -> 0.1.2)
-cargo release patch
+# Bump patch version of core library
+cargo release patch -p spectro-rs
 
-# Or bump minor version (0.1.1 -> 0.2.0)
-cargo release minor
+# Or bump minor version
+cargo release minor -p spectro-rs
 ```
 
 ### 2. Execute the Release
 If the preview looks correct, execute the release:
 ```powershell
-cargo release patch --execute
+cargo release patch -p spectro-rs --execute
 ```
 
 **What this command does automatically:**

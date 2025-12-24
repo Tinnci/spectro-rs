@@ -7,12 +7,12 @@ description: Develop Rust driver for ColorMunki
 This workflow outlines the steps to develop a Rust-based driver for the X-Rite ColorMunki, mirroring the functionality of ArgyllCMS.
 
 ## 1. Project Setup
-- [x] Create `spectro-rs` project.
+- [x] Create workspace with `spectro-rs` and `spectro-gui`.
 - [x] Add dependencies (`rusb`, `hidapi`, `hex`).
 - [x] Implement device scanning.
 
 ## 2. Low-Level Communication (Current Focus)
-- [ ] Implement `Munki` struct in `src/munki.rs`.
+- [ ] Implement `Munki` struct in `crates/spectro-rs/src/munki.rs`.
 - [ ] Implement Control Transfer wrappers (`read_control`, `write_control`).
 - [ ] Implement `get_version_string` (Cmd 0x85).
 - [ ] Implement `get_serial_number` (Cmd 0x8F ? No, 0x8F is MeaState).
@@ -34,4 +34,4 @@ This workflow outlines the steps to develop a Rust-based driver for the X-Rite C
 - [ ] Ensure no other software (Argyll, X-Rite) is using the device.
 
 ## 6. Integration
-- [ ] Update `main.rs` to open device and print debug info.
+- [ ] Update `crates/spectro-rs/src/main.rs` to open device and print debug info.

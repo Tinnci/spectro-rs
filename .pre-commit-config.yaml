@@ -12,15 +12,15 @@ repos:
     -   id: cargo-clippy
         name: cargo clippy
         description: Enforce Rust linting rules before commit.
-        entry: cargo clippy --all-targets --all-features -- -D warnings
+        entry: cargo clippy --workspace --all-targets --all-features -- -D warnings
         language: system
         types: [rust]
         pass_filenames: false
-
+ 
     -   id: cargo-test
         name: cargo test
         description: Ensure all tests pass before commit.
-        entry: cargo test
+        entry: cargo test --workspace
         language: system
         types: [rust]
         pass_filenames: false

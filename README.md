@@ -33,11 +33,24 @@
 - **Linux**: Ensure you have correct `udev` rules for USB access.
 
 ### 2. Run
-```bash
-cargo run
-```
+This project is organized as a Cargo Workspace:
+
+- **CLI Tool**: The original interactive terminal application.
+  ```bash
+  cargo run -p spectro-rs
+  ```
+
+- **GUI Suite**: A modern graphical interface with live spectral plots and Lab analysis.
+  ```bash
+  cargo run -p spectro-gui
+  ```
 
 ---
+
+## 🏗️ Project Structure
+
+- **`crates/spectro-rs`**: The core library and CLI tool. This is the main driver that talks to the hardware.
+- **`crates/spectro-gui`**: The graphical user interface built with `egui` and `eframe`.
 
 ## 📖 Operational Guide
 
