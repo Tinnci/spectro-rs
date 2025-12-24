@@ -13,5 +13,6 @@ no-device = No ColorMunki found.
 menu-title = Please select an action:
 menu-measure = Measure Reflective Spot
 menu-measure-emissive = Measure Emissive (Monitor)
+menu-measure-ambient = Measure Ambient (Light Source)
 menu-calibrate = Restart Calibration
 menu-exit = Exit

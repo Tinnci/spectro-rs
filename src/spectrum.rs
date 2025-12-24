@@ -40,6 +40,24 @@ impl SpectralData {
     }
 }
 
+impl XYZ {
+    pub fn to_chromaticity(&self) -> (f32, f32) {
+        let sum = self.x + self.y + self.z;
+        if sum < 1e-6 {
+            return (0.3127, 0.3290);
+        } // Default to D65 if zero
+        (self.x / sum, self.y / sum)
+    }
+
+    /// Calculate Correlated Color Temperature (CCT) using McCamy's formula.
+    pub fn to_cct(&self) -> f32 {
+        let (x, y) = self.to_chromaticity();
+        let n = (x - 0.3320) / (0.1858 - y);
+        // McCamy's formula
+        449.0 * n.powi(3) + 3525.0 * n.powi(2) + 6823.3 * n + 5524.33
+    }
+}
+
 impl std::fmt::Display for SpectralData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Spectral Data (380nm - 730nm):")?;

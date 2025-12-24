@@ -13,5 +13,6 @@ no-device = 未找到 ColorMunki 设备。
 menu-title = 请选择操作：
 menu-measure = 测量反射样色 (Reflective)
 menu-measure-emissive = 测量发射样色 (屏幕)
+menu-measure-ambient = 测量环境光 (光源)
 menu-calibrate = 重新校准
 menu-exit = 退出

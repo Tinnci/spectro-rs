@@ -468,11 +468,17 @@ impl<T: UsbContext> Munki<T> {
                 }
             }
 
-            // Apply White Calibration Factor only for Reflective mode
-            if mode == crate::MeasurementMode::Reflective {
-                if let Some(factors) = &self.white_cal_factors {
-                    sum *= factors[w];
+            match mode {
+                crate::MeasurementMode::Reflective => {
+                    if let Some(factors) = &self.white_cal_factors {
+                        sum *= factors[w];
+                    }
                 }
+                crate::MeasurementMode::Ambient => {
+                    // Apply ambient correction coefficients if available
+                    sum *= config._amb_coef[w];
+                }
+                _ => {} // Emissive usually uses the emtx directly
             }
 
             values.push(sum);
