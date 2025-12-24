@@ -2,8 +2,13 @@
 name = "spectro-rs"
 version = "0.1.2"
 edition = "2021"
-authors = ["Tinnci <shisooe@gmail.com>"]
-description = "Core library for X-Rite ColorMunki spectrometers."
+authors = ["Tinnci <shisoratsu@icloud.com>"]
+description = "A high-performance Rust driver for X-Rite ColorMunki spectrometers"
+license = "GPL-3.0"
+repository = "https://github.com/Tinnci/spectro-rs"
+readme = "README.md"
+categories = ["hardware-support", "science", "embedded"]
+keywords = ["spectrometer", "colormunki", "colorimetry", "usb", "xrite"]
 
 [dependencies]
 rusb = "0.9.4"

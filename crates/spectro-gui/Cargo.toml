@@ -1,7 +1,14 @@
 [package]
 name = "spectro-gui"
-version = "0.1.0"
+version = "0.1.2"
 edition = "2021"
+authors = ["Tinnci <shisoratsu@icloud.com>"]
+description = "Graphical User Interface for the spectro-rs spectrometer driver suite"
+license = "GPL-3.0"
+repository = "https://github.com/Tinnci/spectro-rs"
+readme = "README.md"
+categories = ["hardware-support", "graphics", "science"]
+keywords = ["spectrometer", "colormunki", "colorimetry", "egui"]
 
 [dependencies]
 spectro-rs = { path = "../spectro-core" }
