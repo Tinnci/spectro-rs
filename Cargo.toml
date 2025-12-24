@@ -19,3 +19,12 @@ i18n-embed-fl = "0.8.0"
 sys-locale = "0.3.1"
 dialoguer = "0.11.0"
 # LazyLock is stable in 1.80.0+, but we'll keep the direct std sync usage for simplicity.
+
+[package.metadata.release]
+# We only want cargo-release to handle version bumping, commit, tag, and push.
+# The actual publishing to crates.io is handled by GitHub Actions upon tag push.
+publish = false
+tag-name = "v{{version}}"
+tag-message = "chore: Release {{version}}"
+pre-release-commit-message = "chore: Release {{version}}"
+post-release-commit-message = "chore: Prepare for next development iteration"
