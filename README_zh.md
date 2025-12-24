@@ -49,9 +49,24 @@ cargo run
 
 ---
 
-## ⚖️ 授权协议
+## 🛠️ 开发与 CI/CD
 
-本项目采用 **[GPLv3](https://www.gnu.org/licenses/gpl-3.0.html)** 加密开源协议。
+本项目遵循现代 DevOps 实践，以确保代码质量：
+
+### ⚙️ CI/CD (GitHub Actions)
+- **CI**: 每次推送到 `main` 分支（排除文档更改）都会触发测试、格式检查和静态分析 (`clippy`)。
+- **CD**: 推送标签 (`v*`) 会自动将 Crate 发布到 [crates.io](https://crates.io/crates/spectro-rs)。
+
+### ⚓ Pre-commit 钩子
+为了在本地保持高代码质量，我们使用 `pre-commit`。它确保所有代码在提交前经过格式化并通过静态检查。
+1. 安装 [pre-commit](https://pre-commit.com/)。
+2. 在项目根目录运行 `pre-commit install`。
+
+---
+
+## ⚖️ 开源协议
+
+本项目采用 **[GPLv3](https://www.gnu.org/licenses/gpl-3.0.html)** 开源协议。
 
 ---
 
