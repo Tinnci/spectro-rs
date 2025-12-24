@@ -48,6 +48,7 @@ pub struct MunkiConfig {
     pub lin_normal: Vec<f32>,
     pub lin_high: Vec<f32>,
     pub white_ref: Vec<f32>,
+    pub emis_coef: Vec<f32>,
     pub amb_coef: Vec<f32>,
 }
 
@@ -268,6 +269,13 @@ impl<T: Transport> Munki<T> {
             )));
         }
 
+        let mut emis_coef = Vec::with_capacity(36);
+        for i in 0..36 {
+            emis_coef.push(f32::from_bits(u32::from_le_bytes(
+                data[5112 + i * 4..5112 + i * 4 + 4].try_into().unwrap(),
+            )));
+        }
+
         let mut amb_coef = Vec::with_capacity(36);
         for i in 0..36 {
             amb_coef.push(f32::from_bits(u32::from_le_bytes(
@@ -285,6 +293,7 @@ impl<T: Transport> Munki<T> {
             lin_normal,
             lin_high,
             white_ref,
+            emis_coef,
             amb_coef,
         })
     }
@@ -374,6 +383,8 @@ impl<T: Transport> Munki<T> {
         }
 
         self.trigger_measure(int_clocks, 1, flags)?;
+        // Wait for measurement to complete.
+        // ArgyllCMS uses ~150ms safety margin; we use 200ms for extra robustness.
         std::thread::sleep(Duration::from_millis((int_time_sec * 1000.0) as u64 + 200));
 
         let readings = self.read_measurement(1)?;
@@ -438,7 +449,9 @@ impl<T: Transport> Munki<T> {
                 MeasurementMode::Ambient => {
                     sum *= self.config.amb_coef[w];
                 }
-                MeasurementMode::Emissive => {}
+                MeasurementMode::Emissive => {
+                    sum *= self.config.emis_coef[w];
+                }
             }
 
             values.push(sum);

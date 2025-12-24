@@ -92,8 +92,15 @@ impl SpectralData {
     /// Convert spectral power distribution to XYZ for emissive sources (2° observer).
     /// Uses direct integration with CIE CMFs.
     ///
-    /// For absolute luminance (cd/m²), the values should be in W/sr/m²/nm
-    /// and result should be multiplied by Km = 683 lm/W.
+    /// # Output Units
+    ///
+    /// The output units depend on how the spectral data was processed:
+    /// - If spectral values are in device-calibrated units (via EEPROM `emis_coef`),
+    ///   the Y value approximates luminance in cd/m² (after proper device calibration).
+    /// - For raw spectral power in W/sr/m²/nm, multiply Y by Km=683 lm/W for cd/m².
+    ///
+    /// Note: The ColorMunki's EEPROM `emis_coef` provides device-specific calibration
+    /// that should produce results comparable to ArgyllCMS when properly applied.
     pub fn to_xyz_emissive_2(&self) -> XYZ {
         const STEP: f32 = 10.0; // 10nm wavelength step
 
@@ -107,9 +114,8 @@ impl SpectralData {
             z += self.values[i] * Z_BAR_2[i];
         }
 
-        // For emissive sources, we integrate P(λ) * CMF(λ) * Δλ
-        // If values are relative, the result is relative XYZ
-        // If absolute (W/sr/m²/nm), multiply Y by 683 to get luminance in cd/m²
+        // Integrate P(λ) * CMF(λ) * Δλ
+        // No additional Km scaling - emis_coef from EEPROM provides calibration
         XYZ {
             x: x * STEP,
             y: y * STEP,

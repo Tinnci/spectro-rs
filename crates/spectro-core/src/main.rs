@@ -77,14 +77,7 @@ fn main() -> Result<()> {
                         println!("\n\x1b[32m{}\x1b[0m", t!("spectral-success"));
 
                         // Colorimetry
-                        let mut norm_xyz = spec.to_xyz();
-
-                        // Apply scaling for absolute modes (Emissive/Ambient)
-                        if mode != MeasurementMode::Reflective {
-                            norm_xyz.x *= 0.00025;
-                            norm_xyz.y *= 0.00025;
-                            norm_xyz.z *= 0.00025;
-                        }
+                        let norm_xyz = spec.to_xyz();
 
                         // Reference White (D50)
                         let wp = XYZ {
