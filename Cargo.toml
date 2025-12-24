@@ -1,6 +1,6 @@
 [package]
 name = "spectro-rs"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 authors = ["Tinnci <shisooe@gmail.com>"]
 description = "A high-performance Rust driver for X-Rite ColorMunki spectrometers supporting Reflective, Emissive, and Ambient modes."
