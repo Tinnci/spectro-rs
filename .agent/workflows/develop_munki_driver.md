@@ -39,7 +39,23 @@ This workflow outlines the steps to develop a Rust-based driver for the X-Rite C
 - [x] Implement Device Worker thread for non-blocking UI.
 - [x] Implement Measurement mode selection.
 
-## 6. Infrastructure
+## 6. GUI Enhancement (Progressive Disclosure)
+- [x] Simple/Expert dual-mode design.
+- [x] Simple Mode: Giant color swatch, Pass/Fail display, key metrics (L*a*b*).
+- [x] Expert Mode: Full spectral plot with wavelength markers.
+- [x] Expert Mode: Multi-dimensional data dashboard (XYZ, Lab, LCh, sRGB).
+- [x] Expert Inspector Panel with tabs:
+  - [x] Device Info (model, serial, firmware, EEPROM cal version).
+  - [x] Raw Sensor Data (spectral values table, statistics).
+  - [x] Algorithm Debug (white point, conversion pipeline).
+- [x] Measurement History sidebar (Expert mode).
+- [x] Reference Color Comparison with ΔE Pass/Fail.
+- [x] Graceful device disconnect handling with reconnect.
+- [ ] Export CSV/JSON for measurement history.
+- [ ] CIE 1931 xy chromaticity diagram.
+- [ ] ICC Profile support for CMYK conversion.
+
+## 7. Infrastructure
 - [x] Set up Cargo Workspace.
 - [x] GitHub Actions CI for all workspace members.
 - [x] GitHub Actions CD (Crates.io + Releases).
