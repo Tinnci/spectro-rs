@@ -11,8 +11,13 @@ const CMD_GET_VERSION: u8 = 0x85;
 const CMD_GET_FIRMWARE: u8 = 0x86;
 const CMD_GET_STATUS: u8 = 0x87;
 const CMD_GET_CHIP_ID: u8 = 0x8A;
-const CMD_GET_MEAS_STATE: u8 = 0x8F;
 const CMD_TRIGGER_MEASURE: u8 = 0x80;
+
+pub const WAVELENGTHS: [f32; 36] = [
+    380.0, 390.0, 400.0, 410.0, 420.0, 430.0, 440.0, 450.0, 460.0, 470.0, 480.0, 490.0, 500.0,
+    510.0, 520.0, 530.0, 540.0, 550.0, 560.0, 570.0, 580.0, 590.0, 600.0, 610.0, 620.0, 630.0,
+    640.0, 650.0, 660.0, 670.0, 680.0, 690.0, 700.0, 710.0, 720.0, 730.0,
+];
 
 pub const MMF_LAMP: u8 = 0x01;
 pub const MMF_SCAN: u8 = 0x02;
@@ -69,26 +74,38 @@ impl MunkiStatus {
 pub struct MunkiConfig {
     pub cal_version: u16,
     pub serial_number: String,
-    pub production_no: u32,
+    pub _production_no: u32,
     pub rmtx_index: Vec<u32>,
     pub rmtx_coef: Vec<f32>,
-    pub emtx_index: Vec<u32>,
-    pub emtx_coef: Vec<f32>,
+    pub _emtx_index: Vec<u32>,
+    pub _emtx_coef: Vec<f32>,
     pub lin_normal: Vec<f32>,
     pub lin_high: Vec<f32>,
     pub white_ref: Vec<f32>,
-    pub emis_coef: Vec<f32>,
-    pub amb_coef: Vec<f32>,
-    pub proj_coef: Vec<f32>,
+    pub _emis_coef: Vec<f32>,
+    pub _amb_coef: Vec<f32>,
+    pub _proj_coef: Vec<f32>,
 }
 
 pub struct Munki<T: UsbContext> {
     handle: DeviceHandle<T>,
+    pub config: Option<MunkiConfig>,
+    pub dark_ref: Option<Vec<u16>>,
+    pub white_cal_factors: Option<Vec<f32>>,
 }
 
 impl<T: UsbContext> Munki<T> {
     pub fn new(handle: DeviceHandle<T>) -> Self {
-        Self { handle }
+        Self {
+            handle,
+            config: None,
+            dark_ref: None,
+            white_cal_factors: None,
+        }
+    }
+
+    pub fn set_config(&mut self, config: MunkiConfig) {
+        self.config = Some(config);
     }
 
     /// Claim the interface (usually 0)
@@ -318,17 +335,17 @@ impl<T: UsbContext> Munki<T> {
         Ok(MunkiConfig {
             cal_version,
             serial_number,
-            production_no: prod_no,
+            _production_no: prod_no,
             rmtx_index,
             rmtx_coef,
-            emtx_index,
-            emtx_coef,
+            _emtx_index: emtx_index,
+            _emtx_coef: emtx_coef,
             lin_normal,
             lin_high,
             white_ref,
-            emis_coef,
-            amb_coef,
-            proj_coef,
+            _emis_coef: emis_coef,
+            _amb_coef: amb_coef,
+            _proj_coef: proj_coef,
         })
     }
 
@@ -426,5 +443,138 @@ impl<T: UsbContext> Munki<T> {
             return Err(rusb::Error::NoDevice);
         }
         Ok(readings[0].clone())
+    }
+
+    /// Process raw spectral data using the device's calibration matrices
+    pub fn process_spectrum(
+        &self,
+        raw_137: &[u16],
+        int_time_sec: f64,
+        high_gain: bool,
+    ) -> std::result::Result<SpectralData, String> {
+        let config = self
+            .config
+            .as_ref()
+            .ok_or("Calibration config not loaded")?;
+
+        // 1. Prepare raw bands (128 bands starting at index 6)
+        // Note: Argyll subtracts dark/shielded cells here for drift compensation.
+        // For now we assume raw_137 already has a dark profile if needed,
+        // or we use the dark_ref if available.
+        let offset = 6;
+        let mut linearized = Vec::with_capacity(128);
+        let polys = if high_gain {
+            &config.lin_high
+        } else {
+            &config.lin_normal
+        };
+        let scale = 1.0 / int_time_sec;
+
+        for i in 0..128 {
+            let mut val = raw_137[offset + i] as f64;
+
+            // Simple dark subtraction if reference exists
+            if let Some(dark) = &self.dark_ref {
+                val -= dark[offset + i] as f64;
+            }
+
+            // Apply polynomial linearization: Horner's method
+            let mut lval = polys[3] as f64;
+            lval = lval * val + polys[2] as f64;
+            lval = lval * val + polys[1] as f64;
+            lval = lval * val + polys[0] as f64;
+
+            linearized.push((lval * scale) as f32);
+        }
+
+        // 2. Apply Spectral Matrix (rmtx for reflective, emtx for emissive)
+        // Default to reflective for now
+        let mut values = Vec::with_capacity(36);
+        for w in 0..36 {
+            let idx = config.rmtx_index[w] as usize;
+            let mut sum = 0.0f32;
+            for k in 0..16 {
+                if idx + k < linearized.len() {
+                    sum += config.rmtx_coef[w * 16 + k] * linearized[idx + k];
+                }
+            }
+
+            // 3. Apply White Calibration Factor if available
+            if let Some(factors) = &self.white_cal_factors {
+                sum *= factors[w];
+            }
+
+            values.push(sum);
+        }
+
+        Ok(SpectralData {
+            wavelengths: WAVELENGTHS.to_vec(),
+            values,
+        })
+    }
+
+    /// Perform a white point calibration against the internal white tile.
+    /// The sensor MUST be in the calibration position.
+    pub fn compute_white_calibration(
+        &mut self,
+        int_time_sec: f64,
+        tick_duration_sec: f64,
+    ) -> std::result::Result<(), String> {
+        // 1. Verify position
+        let status = self.get_status().map_err(|e| e.to_string())?;
+        if status.sensor_position != 2 {
+            // mk_spos_calib
+            return Err(
+                "Device not in Calibration position (turn the dial to the white dot)".into(),
+            );
+        }
+
+        println!("  - Measuring white tile (Lamp ON)...");
+        // 2. Trigger measurement with LAMP ON
+        let raw_white = self
+            .measure_spot(int_time_sec, tick_duration_sec, true, false)
+            .map_err(|e| format!("White measurement failed: {}", e))?;
+
+        // 3. Process to standard spectrum (without calibration factors yet)
+        // Temporarily clear factors to get raw spectral values
+        let old_factors = self.white_cal_factors.take();
+        let spec_res = self.process_spectrum(&raw_white, int_time_sec, false);
+        self.white_cal_factors = old_factors; // Restore
+
+        let spec = spec_res?;
+        let config = self.config.as_ref().ok_or("Config missing")?;
+
+        // 4. Compute factors: Factor = Reference / Measured
+        let mut factors = Vec::with_capacity(36);
+        for i in 0..36 {
+            let measured = spec.values[i];
+            let reference = config.white_ref[i];
+
+            if measured > 1e-6 {
+                factors.push(reference / measured);
+            } else {
+                factors.push(1.0); // Avoid division by zero
+            }
+        }
+
+        self.white_cal_factors = Some(factors);
+        println!("  - White calibration factors computed successfully.");
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SpectralData {
+    pub wavelengths: Vec<f32>,
+    pub values: Vec<f32>,
+}
+
+impl std::fmt::Display for SpectralData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Spectral Data (380nm - 730nm):")?;
+        for (w, v) in self.wavelengths.iter().zip(self.values.iter()) {
+            writeln!(f, "  {:.0}nm: {:.6}", w, v)?;
+        }
+        Ok(())
     }
 }

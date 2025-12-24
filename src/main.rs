@@ -81,7 +81,7 @@ fn attempt_munki_connect<T: UsbContext>(
                 }
             }
 
-            let munki = Munki::new(handle);
+            let mut munki = Munki::new(handle);
 
             println!("--- Device Info ---");
             if let Ok(v) = munki.get_version_string() {
@@ -134,41 +134,79 @@ fn attempt_munki_connect<T: UsbContext>(
                                         &config.white_ref[0..5]
                                     );
 
-                                    println!("--- Measurement Test (Dark) ---");
+                                    // Store config for processing
+                                    munki.set_config(config.clone());
+
+                                    println!("\x1b[33m--- Calibration Required ---\x1b[0m");
+                                    println!(
+                                        "  1. Turn the dial to the \x1b[1mWhite Dot\x1b[0m (Calibration position)."
+                                    );
+                                    println!("  2. Press Enter to start calibration...");
+                                    let mut input = String::new();
+                                    let _ = std::io::stdin().read_line(&mut input);
+
                                     if let Ok(fw) = &firmware_res {
                                         let tick_sec = fw.tick_duration as f64 * 1e-6;
                                         let min_int_sec =
                                             (fw.min_int_count * fw.tick_duration) as f64 * 1e-6;
-                                        println!(
-                                            "  - Triggering measurement (Int: {}ms)...",
-                                            min_int_sec * 1000.0
-                                        );
+
+                                        // 1. Dark Calibration (Lamp OFF)
+                                        println!("  - Step 1/2: Dark Frame subtraction...");
                                         match munki.measure_spot(
                                             min_int_sec,
                                             tick_sec,
                                             false,
                                             false,
                                         ) {
+                                            Ok(raw_dark) => {
+                                                munki.dark_ref = Some(raw_dark);
+                                                println!("    OK.");
+                                            }
+                                            Err(e) => {
+                                                println!("    Warning: Dark frame failed: {}", e)
+                                            }
+                                        }
+
+                                        // 2. White Calibration (Lamp ON)
+                                        println!("  - Step 2/2: White tile calibration...");
+                                        match munki.compute_white_calibration(min_int_sec, tick_sec)
+                                        {
+                                            Ok(_) => {
+                                                println!("\x1b[32m  Calibration Success!\x1b[0m")
+                                            }
+                                            Err(e) => println!(
+                                                "\x1b[31m  Calibration Failed: {}\x1b[0m",
+                                                e
+                                            ),
+                                        }
+
+                                        println!("--- Measurement Test (Calibrated) ---");
+                                        println!("  - Measuring White Tile again to verify...");
+                                        match munki.measure_spot(min_int_sec, tick_sec, true, false)
+                                        {
                                             Ok(raw_data) => {
-                                                println!("  - Measurement Successful!");
-                                                println!(
-                                                    "  - Raw spectral data (137 bands, first 10): {:?}",
-                                                    &raw_data[0..10]
-                                                );
-                                                let sum: u32 =
-                                                    raw_data.iter().map(|&x| x as u32).sum();
-                                                println!(
-                                                    "  - Data Sum: {} (Avg: {:.2})",
-                                                    sum,
-                                                    sum as f64 / 137.0
-                                                );
+                                                match munki.process_spectrum(
+                                                    &raw_data,
+                                                    min_int_sec,
+                                                    false,
+                                                ) {
+                                                    Ok(spec) => {
+                                                        println!(
+                                                            "\x1b[32mSpectral Conversion Successful!\x1b[0m"
+                                                        );
+                                                        println!("{}", spec);
+                                                        println!(
+                                                            "Hint: All values should be close to the White Reference in EEPROM (approx 0.86)."
+                                                        );
+                                                    }
+                                                    Err(e) => println!(
+                                                        "  - Spectral processing failed: {}",
+                                                        e
+                                                    ),
+                                                }
                                             }
                                             Err(e) => println!("  - Measurement Failed: {}", e),
                                         }
-                                    } else {
-                                        println!(
-                                            "  - Cannot perform measurement: Firmware info not available."
-                                        );
                                     }
                                 }
                                 Err(e) => println!("  - EEPROM Parsing Failed: {}", e),
