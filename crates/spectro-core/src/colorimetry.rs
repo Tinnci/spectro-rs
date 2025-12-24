@@ -37,57 +37,91 @@ pub const Z_BAR_10: [f32; 36] = [
     0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
 ];
 
-/// CIE Standard Illuminants (2-degree observer, normalized Y=1.0).
+/// CIE Standard Illuminants.
+/// IMPORTANT: Use the correct observer angle (2° or 10°) matching your CMFs.
 pub mod illuminant {
     use super::XYZ;
 
-    /// D50 (Horizon Light, Print Industry Standard)
+    // ==================== 2-DEGREE OBSERVER ====================
+    /// D50 (Horizon Light, Print Industry - 2°)
     pub const D50: XYZ = XYZ {
         x: 0.96422,
         y: 1.0,
         z: 0.82521,
     };
-    /// D55 (Mid-Morning / Mid-Afternoon Daylight)
+    /// D55 (Mid-Morning Daylight - 2°)
     pub const D55: XYZ = XYZ {
         x: 0.95682,
         y: 1.0,
         z: 0.92149,
     };
-    /// D65 (Noon Daylight, sRGB/Display Standard)
+    /// D65 (Noon Daylight, sRGB Standard - 2°)
     pub const D65: XYZ = XYZ {
         x: 0.95047,
         y: 1.0,
         z: 1.08883,
     };
-    /// D75 (North Sky Daylight)
+    /// D75 (North Sky Daylight - 2°)
     pub const D75: XYZ = XYZ {
         x: 0.94972,
         y: 1.0,
         z: 1.22638,
     };
-    /// Illuminant A (Incandescent / Tungsten, 2856K)
+    /// Illuminant A (Tungsten 2856K - 2°)
     pub const A: XYZ = XYZ {
         x: 1.09850,
         y: 1.0,
         z: 0.35585,
     };
-    /// F2 (Cool White Fluorescent)
+    /// F2 (Cool White Fluorescent - 2°)
     pub const F2: XYZ = XYZ {
         x: 0.99186,
         y: 1.0,
         z: 0.67393,
     };
-    /// F7 (Daylight Fluorescent, D65 Simulator)
+    /// F7 (Daylight Fluorescent - 2°)
     pub const F7: XYZ = XYZ {
         x: 0.95041,
         y: 1.0,
         z: 1.08747,
     };
-    /// F11 (Philips TL84, Narrow Band Cool White)
+    /// F11 (TL84 Narrow Band - 2°)
     pub const F11: XYZ = XYZ {
         x: 1.00962,
         y: 1.0,
         z: 0.64350,
+    };
+
+    // ==================== 10-DEGREE OBSERVER ====================
+    /// D50 (10-degree observer)
+    pub const D50_10: XYZ = XYZ {
+        x: 0.96720,
+        y: 1.0,
+        z: 0.81427,
+    };
+    /// D55 (10-degree observer)
+    pub const D55_10: XYZ = XYZ {
+        x: 0.95799,
+        y: 1.0,
+        z: 0.90926,
+    };
+    /// D65 (10-degree observer)
+    pub const D65_10: XYZ = XYZ {
+        x: 0.94811,
+        y: 1.0,
+        z: 1.07304,
+    };
+    /// D75 (10-degree observer)
+    pub const D75_10: XYZ = XYZ {
+        x: 0.94416,
+        y: 1.0,
+        z: 1.20641,
+    };
+    /// Illuminant A (10-degree observer)
+    pub const A_10: XYZ = XYZ {
+        x: 1.11144,
+        y: 1.0,
+        z: 0.35200,
     };
 
     // Legacy aliases for backward compatibility
@@ -96,23 +130,37 @@ pub mod illuminant {
 }
 
 /// Bradford chromatic adaptation transform.
-/// Converts XYZ from one illuminant to another.
+/// Converts XYZ from one illuminant to another using the Bradford cone response model.
+///
+/// Reference: Lindbloom (http://www.brucelindbloom.com/index.html?Eqn_ChromAdapt.html)
+/// Note: The Bradford matrix used here is the "Sharp" variant commonly used in ICC profiles.
 pub mod chromatic_adaptation {
     use super::XYZ;
 
     /// Apply Bradford transform to adapt XYZ from source to destination white point.
+    ///
+    /// # Example
+    /// ```
+    /// use spectro_rs::colorimetry::{XYZ, illuminant, chromatic_adaptation};
+    /// let xyz_d50 = XYZ { x: 0.5, y: 0.5, z: 0.4 };
+    /// let xyz_d65 = chromatic_adaptation::bradford_adapt(xyz_d50, illuminant::D50, illuminant::D65);
+    /// ```
+    #[allow(clippy::excessive_precision)]
     pub fn bradford_adapt(xyz: XYZ, src_wp: XYZ, dst_wp: XYZ) -> XYZ {
         // Bradford M matrix (XYZ to LMS cone response)
+        // Source: Bruce Lindbloom, ICC Profile specification
+        #[rustfmt::skip]
         let m = [
-            [0.8951, 0.2664, -0.1614],
-            [-0.7502, 1.7135, 0.0367],
-            [0.0389, -0.0685, 1.0296],
+            [ 0.8951000,  0.2664000, -0.1614000],
+            [-0.7502000,  1.7135000,  0.0367000],
+            [ 0.0389000, -0.0685000,  1.0296000],
         ];
-        // Inverse Bradford M matrix
+        // Inverse Bradford M matrix (computed to match M exactly)
+        #[rustfmt::skip]
         let m_inv = [
-            [0.9869929, -0.1470543, 0.1599627],
-            [0.4323053, 0.5183603, 0.0492912],
-            [-0.0085287, 0.0400428, 0.9684867],
+            [ 0.9869929, -0.1470543,  0.1599627],
+            [ 0.4323053,  0.5183603,  0.0492912],
+            [-0.0085287,  0.0400428,  0.9684867],
         ];
 
         // Convert to LMS
