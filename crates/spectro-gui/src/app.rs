@@ -236,23 +236,39 @@ impl eframe::App for SpectroApp {
 
                 if let Some(data) = &self.last_result {
                     let xyz = data.to_xyz();
-                    let lab = xyz.to_lab(spectro_rs::colorimetry::illuminant::D65_2);
 
-                    // Color Swatch - now using real sRGB conversion!
-                    let (r, g, b) = lab.to_srgb();
+                    // Normalize XYZ to Y=1.0 range for sRGB conversion
+                    // For reflective mode, values are typically 0-100 scale
+                    let y_max = xyz.y.max(0.01); // Prevent division by zero
+                    let xyz_normalized = spectro_rs::colorimetry::XYZ {
+                        x: xyz.x / y_max,
+                        y: xyz.y / y_max,
+                        z: xyz.z / y_max,
+                    };
+
+                    // Use normalized XYZ directly for sRGB (more accurate than Lab roundtrip)
+                    let (r, g, b) = xyz_normalized.to_srgb();
                     let rect = ui
                         .allocate_exact_size(
-                            egui::vec2(ui.available_width(), 100.0),
+                            egui::vec2(ui.available_width(), 80.0),
                             egui::Sense::hover(),
                         )
                         .0;
                     ui.painter()
                         .rect_filled(rect, 5.0, egui::Color32::from_rgb(r, g, b));
 
+                    // Calculate Lab for display (using original XYZ normalized to Y=100 -> Y=1)
+                    let xyz_for_lab = spectro_rs::colorimetry::XYZ {
+                        x: xyz.x / 100.0,
+                        y: xyz.y / 100.0,
+                        z: xyz.z / 100.0,
+                    };
+                    let lab = xyz_for_lab.to_lab(spectro_rs::colorimetry::illuminant::D65_2);
+
                     ui.add_space(10.0);
                     egui::Grid::new("color_grid")
                         .num_columns(2)
-                        .spacing([40.0, 10.0])
+                        .spacing([40.0, 8.0])
                         .show(ui, |ui| {
                             ui.label("L* value:");
                             ui.label(format!("{:.2}", lab.l));
@@ -268,6 +284,44 @@ impl eframe::App for SpectroApp {
                             ui.end_row();
                             ui.label("CCT:");
                             ui.label(format!("{:.0} K", xyz.to_cct()));
+                            ui.end_row();
+                        });
+
+                    // --- Spectral Analysis (like CLI) ---
+                    ui.separator();
+                    ui.heading("Spectral Analysis");
+
+                    // Peak wavelength (skip noise below 420nm)
+                    let peak_idx = data
+                        .values
+                        .iter()
+                        .enumerate()
+                        .skip(4) // Start from 420nm
+                        .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
+                        .map(|(i, _)| i)
+                        .unwrap_or(0);
+                    let peak_wl = 380 + peak_idx * 10;
+
+                    // Spectral centroid (weighted average wavelength)
+                    let total_power: f32 = data.values.iter().skip(4).sum();
+                    let centroid: f32 = data
+                        .values
+                        .iter()
+                        .enumerate()
+                        .skip(4)
+                        .map(|(i, v)| (380 + i * 10) as f32 * v)
+                        .sum::<f32>()
+                        / total_power.max(1e-6);
+
+                    egui::Grid::new("spectral_grid")
+                        .num_columns(2)
+                        .spacing([40.0, 8.0])
+                        .show(ui, |ui| {
+                            ui.label("Peak λ:");
+                            ui.label(format!("{} nm", peak_wl));
+                            ui.end_row();
+                            ui.label("Centroid:");
+                            ui.label(format!("{:.1} nm", centroid));
                             ui.end_row();
                         });
                 } else {
