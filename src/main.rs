@@ -1,7 +1,7 @@
-use dialoguer::{Select, theme::ColorfulTheme};
+use dialoguer::{theme::ColorfulTheme, Select};
 use rusb::{Context, UsbContext};
 use spectro_rs::munki::Munki;
-use spectro_rs::{MeasurementMode, Result, i18n, t};
+use spectro_rs::{i18n, t, MeasurementMode, Result};
 
 fn main() -> Result<()> {
     i18n::init_i18n();
@@ -58,7 +58,7 @@ fn main() -> Result<()> {
             .unwrap();
 
         match selection {
-            0 | 1 | 2 => {
+            0..=2 => {
                 let mode = match selection {
                     0 => MeasurementMode::Reflective,
                     1 => MeasurementMode::Emissive,
@@ -187,9 +187,8 @@ fn main() -> Result<()> {
                                             _ => "\x1b[31m",               // Red
                                         };
                                         println!(
-                                            "{:3}nm {}{}█{}\x1b[0m",
+                                            "{:3}nm \x1b[90m{}█{}\x1b[0m",
                                             wl,
-                                            "\x1b[90m",
                                             color,
                                             "█".repeat(bar_len.min(30))
                                         );

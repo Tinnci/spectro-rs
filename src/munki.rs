@@ -1,6 +1,6 @@
-use crate::Result;
 use crate::spectrum::SpectralData;
-use rusb::{DeviceHandle, Direction, Recipient, RequestType, UsbContext, request_type};
+use crate::Result;
+use rusb::{request_type, DeviceHandle, Direction, Recipient, RequestType, UsbContext};
 use std::convert::TryInto;
 use std::time::Duration;
 

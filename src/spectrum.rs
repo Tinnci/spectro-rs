@@ -1,5 +1,5 @@
+use crate::colorimetry::{XYZ, X_BAR, Y_BAR, Z_BAR};
 use crate::WAVELENGTHS;
-use crate::colorimetry::{X_BAR, XYZ, Y_BAR, Z_BAR};
 
 #[derive(Debug, Clone)]
 pub struct SpectralData {
