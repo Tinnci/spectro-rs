@@ -66,6 +66,21 @@ Inspired by **ArgyllCMS**:
 
 ---
 
+## 🛠️ Development & CI/CD
+
+This project follows modern DevOps practices to ensure code quality:
+
+### ⚙️ CI/CD (GitHub Actions)
+- **CI**: Every push to `main` (excluding documentation changes) triggers a suite of tests, formatting checks, and lints (`clippy`).
+- **CD**: Pushing a tag (`v*`) automatically publishes the crate to [crates.io](https://crates.io/crates/spectro-rs).
+
+### ⚓ Pre-commit Hooks
+To maintain high code quality locally, we use `pre-commit`. It ensures all code is formatted and passes lints before you can commit.
+1. Install [pre-commit](https://pre-commit.com/).
+2. Run `pre-commit install` in the project root.
+
+---
+
 ## ⚖️ License
 
 Licensed under **[GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.html)**.

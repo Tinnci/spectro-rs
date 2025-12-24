@@ -1,0 +1,26 @@
+repos:
+-   repo: local
+    hooks:
+    -   id: cargo-fmt
+        name: cargo fmt
+        description: Enforce Rust code formatting before commit.
+        entry: cargo fmt --all -- --check
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+    -   id: cargo-clippy
+        name: cargo clippy
+        description: Enforce Rust linting rules before commit.
+        entry: cargo clippy --all-targets --all-features -- -D warnings
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+    -   id: cargo-test
+        name: cargo test
+        description: Ensure all tests pass before commit.
+        entry: cargo test
+        language: system
+        types: [rust]
+        pass_filenames: false
