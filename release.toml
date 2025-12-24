@@ -1,0 +1,15 @@
+# cargo-release configuration
+# See: https://github.com/crate-ci/cargo-release/blob/master/docs/reference.md
+
+# Disable local publishing - let GitHub Actions handle it
+publish = false
+
+# Tag format for workspace crates: "crate-name-vX.Y.Z"
+tag-name = "{{crate_name}}-v{{version}}"
+
+# Commit message format
+tag-message = "Release {{crate_name}} v{{version}}"
+
+# Push to remote after tagging
+push = true
+push-remote = "origin"

@@ -2,24 +2,39 @@
 description: How to release a new version of spectro-rs
 ---
 
-1. Ensure the working directory is clean and CI is passing.
-2. The core library (`spectro-rs`) must be released first, followed by the GUI (`spectro-gui`).
-3. Run a dry run for the core library:
+## Release Process
+
+The release is a two-step process. GitHub Actions handles the actual publishing.
+
+### Step 1: Release Core Library (`spectro-rs`)
+
+1. Run a dry run first:
    ```bash
-   cargo release patch -p spectro-rs --dry-run
+   cargo release patch -p spectro-rs
    ```
-4. Execute the release (bumps version, tags, and pushes):
+
+2. Execute the release:
    ```bash
-   # Use --registry crates-io if you have custom registries configured
-   cargo release patch -p spectro-rs --execute --registry crates-io
+   cargo release patch -p spectro-rs --execute
    ```
-5. Update `spectro-gui` to match the version and dependency:
-   - Update `version` in `crates/spectro-gui/Cargo.toml`.
-   - Update `spectro-rs` dependency version.
+
+3. Wait for GitHub Action to publish (~30 seconds for crates.io indexing).
+
+### Step 2: Release GUI (`spectro-gui`)
+
+1. Run a dry run:
    ```bash
-   cargo release patch -p spectro-gui --execute --registry crates-io
+   cargo release patch -p spectro-gui
    ```
-6. Verify the GitHub Action progress for binary releases:
+
+2. Execute:
    ```bash
-   gh run list --workflow publish.yml
+   cargo release patch -p spectro-gui --execute
    ```
+
+### Verify
+
+Check GitHub Action status:
+```bash
+gh run list --workflow publish.yml
+```
