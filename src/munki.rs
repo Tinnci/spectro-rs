@@ -93,12 +93,28 @@ impl<T: Transport> Munki<T> {
         let firmware = Self::read_firmware_info(&transport)?;
         let config = Self::read_and_parse_eeprom(&transport)?;
 
+        // Try to load existing calibration data for this device
+        let mut dark_ref = None;
+        let mut white_cal_factors = None;
+
+        if let Ok(Some(cal)) = crate::persistence::load_calibration(&config.serial_number) {
+            // Basic validation: ensure the lengths match what we expect
+            if cal.dark_ref.len() == 137 && cal.white_cal_factors.len() == 36 {
+                println!(
+                    "Loaded calibration data for device {}",
+                    config.serial_number
+                );
+                dark_ref = Some(cal.dark_ref);
+                white_cal_factors = Some(cal.white_cal_factors);
+            }
+        }
+
         Ok(Self {
             transport,
             config,
             firmware,
-            dark_ref: None,
-            white_cal_factors: None,
+            dark_ref,
+            white_cal_factors,
         })
     }
 
@@ -464,6 +480,15 @@ impl<T: Transport> Munki<T> {
         }
 
         self.white_cal_factors = Some(factors);
+
+        // Persist calibration data
+        if let Some(dark) = &self.dark_ref {
+            if let Some(white) = &self.white_cal_factors {
+                let _ =
+                    crate::persistence::save_calibration(&self.config.serial_number, dark, white);
+            }
+        }
+
         Ok(())
     }
 }

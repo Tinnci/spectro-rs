@@ -1,4 +1,4 @@
-use crate::colorimetry::{XYZ, X_BAR, Y_BAR, Z_BAR};
+use crate::colorimetry::{XYZ, X_BAR_10, X_BAR_2, Y_BAR_10, Y_BAR_2, Z_BAR_10, Z_BAR_2};
 use crate::WAVELENGTHS;
 
 #[derive(Debug, Clone)]
@@ -15,22 +15,47 @@ impl SpectralData {
         }
     }
 
+    /// Convert to XYZ using the standard 2-degree observer.
     pub fn to_xyz(&self) -> XYZ {
+        self.to_xyz_2()
+    }
+
+    /// Convert to XYZ using the 2-degree observer (CIE 1931).
+    pub fn to_xyz_2(&self) -> XYZ {
         let mut x = 0.0;
         let mut y = 0.0;
         let mut z = 0.0;
 
         for i in 0..36 {
-            x += self.values[i] * X_BAR[i];
-            y += self.values[i] * Y_BAR[i];
-            z += self.values[i] * Z_BAR[i];
+            x += self.values[i] * X_BAR_2[i];
+            y += self.values[i] * Y_BAR_2[i];
+            z += self.values[i] * Z_BAR_2[i];
         }
 
-        // Integration with 10nm step.
-        // We typically normalize such that a flat 1.0 spectrum yields Y ≈ 100.
-        // Sum of Y_BAR is ~10.68. Multiply by 10 (step) -> ~106.8.
-        // To get 100, we use a normalization factor k = 100 / 106.82 ≈ 0.936
+        // Normalization factor for Y=100.
         let k = 100.0 / 10.6821;
+
+        XYZ {
+            x: x * k,
+            y: y * k,
+            z: z * k,
+        }
+    }
+
+    /// Convert to XYZ using the 10-degree observer (CIE 1964).
+    pub fn to_xyz_10(&self) -> XYZ {
+        let mut x = 0.0;
+        let mut y = 0.0;
+        let mut z = 0.0;
+
+        for i in 0..36 {
+            x += self.values[i] * X_BAR_10[i];
+            y += self.values[i] * Y_BAR_10[i];
+            z += self.values[i] * Z_BAR_10[i];
+        }
+
+        // Normalization factor for 10-degree observer.
+        let k = 100.0 / 11.2319;
 
         XYZ {
             x: x * k,

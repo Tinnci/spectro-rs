@@ -93,6 +93,7 @@ pub mod colorimetry;
 pub mod device;
 pub mod i18n;
 pub mod munki;
+pub mod persistence;
 pub mod spectrum;
 pub mod transport;
 
