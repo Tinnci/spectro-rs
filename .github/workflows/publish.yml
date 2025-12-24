@@ -23,7 +23,7 @@ jobs:
       - name: Publish spectro-rs to Crates.io
         run: cargo publish -p spectro-rs --token ${CRATES_IO_TOKEN}
         env:
-          CRATES_IO_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+          CRATES_IO_TOKEN: ${{ secrets.CRATES_IO_TOKEN_RS }}
 
       - name: Wait for crates.io to index
         run: sleep 30
@@ -31,7 +31,7 @@ jobs:
       - name: Publish spectro-gui to Crates.io
         run: cargo publish -p spectro-gui --token ${CRATES_IO_TOKEN}
         env:
-          CRATES_IO_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+          CRATES_IO_TOKEN: ${{ secrets.CRATES_IO_TOKEN_GUI }}
 
   release_binaries:
     name: Release Binaries
