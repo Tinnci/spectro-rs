@@ -26,8 +26,17 @@ impl SpectralData {
             z += self.values[i] * Z_BAR[i];
         }
 
-        // Normalize constants based on 10nm step integration
-        XYZ { x, y, z }
+        // Integration with 10nm step.
+        // We typically normalize such that a flat 1.0 spectrum yields Y ≈ 100.
+        // Sum of Y_BAR is ~10.68. Multiply by 10 (step) -> ~106.8.
+        // To get 100, we use a normalization factor k = 100 / 106.82 ≈ 0.936
+        let k = 100.0 / 10.6821;
+
+        XYZ {
+            x: x * k,
+            y: y * k,
+            z: z * k,
+        }
     }
 }
 

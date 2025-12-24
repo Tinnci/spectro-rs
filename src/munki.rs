@@ -419,6 +419,7 @@ impl<T: UsbContext> Munki<T> {
         raw_137: &[u16],
         int_time_sec: f64,
         high_gain: bool,
+        mode: crate::MeasurementMode,
     ) -> Result<SpectralData> {
         let config = self
             .config
@@ -447,17 +448,33 @@ impl<T: UsbContext> Munki<T> {
         }
 
         let mut values = Vec::with_capacity(36);
+        let mtx_index = if mode == crate::MeasurementMode::Emissive {
+            &config._emtx_index
+        } else {
+            &config.rmtx_index
+        };
+        let mtx_coef = if mode == crate::MeasurementMode::Emissive {
+            &config._emtx_coef
+        } else {
+            &config.rmtx_coef
+        };
+
         for w in 0..36 {
-            let idx = config.rmtx_index[w] as usize;
+            let idx = mtx_index[w] as usize;
             let mut sum = 0.0f32;
             for k in 0..16 {
                 if idx + k < linearized.len() {
-                    sum += config.rmtx_coef[w * 16 + k] * linearized[idx + k];
+                    sum += mtx_coef[w * 16 + k] * linearized[idx + k];
                 }
             }
-            if let Some(factors) = &self.white_cal_factors {
-                sum *= factors[w];
+
+            // Apply White Calibration Factor only for Reflective mode
+            if mode == crate::MeasurementMode::Reflective {
+                if let Some(factors) = &self.white_cal_factors {
+                    sum *= factors[w];
+                }
             }
+
             values.push(sum);
         }
 
@@ -480,7 +497,12 @@ impl<T: UsbContext> Munki<T> {
         let raw_white = self.measure_spot(int_time_sec, tick_duration_sec, true, false)?;
 
         let old_factors = self.white_cal_factors.take();
-        let spec = self.process_spectrum(&raw_white, int_time_sec, false)?;
+        let spec = self.process_spectrum(
+            &raw_white,
+            int_time_sec,
+            false,
+            crate::MeasurementMode::Reflective,
+        )?;
         self.white_cal_factors = old_factors;
 
         let config = self

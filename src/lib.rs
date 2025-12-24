@@ -25,8 +25,15 @@ pub mod i18n;
 pub mod munki;
 pub mod spectrum;
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MeasurementMode {
+    Reflective,
+    Emissive,
+    Ambient,
+}
+
 pub trait Spectrometer {
     fn get_serial(&self) -> String;
-    fn measure(&mut self) -> Result<spectrum::SpectralData>;
+    fn measure(&mut self, mode: MeasurementMode) -> Result<spectrum::SpectralData>;
     fn calibrate(&mut self) -> Result<()>;
 }
