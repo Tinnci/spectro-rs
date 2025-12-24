@@ -1,9 +1,6 @@
-use rusb::{DeviceHandle, Result, UsbContext};
+use rusb::{DeviceHandle, Direction, Recipient, RequestType, Result, UsbContext, request_type};
 use std::convert::TryInto;
 use std::time::Duration;
-
-const MUNKI_VID: u16 = 0x0971;
-const MUNKI_PID: u16 = 0x2007;
 
 // Request Types
 const REQ_TYPE_VENDOR_IN: u8 = 0xC0; // Dir: Dev->Host, Type: Vendor, Recip: Device
@@ -15,6 +12,11 @@ const CMD_GET_FIRMWARE: u8 = 0x86;
 const CMD_GET_STATUS: u8 = 0x87;
 const CMD_GET_CHIP_ID: u8 = 0x8A;
 const CMD_GET_MEAS_STATE: u8 = 0x8F;
+const CMD_TRIGGER_MEASURE: u8 = 0x80;
+
+pub const MMF_LAMP: u8 = 0x01;
+pub const MMF_SCAN: u8 = 0x02;
+pub const MMF_HIGHGAIN: u8 = 0x04;
 const CMD_SET_EEPROM_ADDR: u8 = 0x81;
 
 #[derive(Debug, Clone)]
@@ -328,5 +330,101 @@ impl<T: UsbContext> Munki<T> {
             amb_coef,
             proj_coef,
         })
+    }
+
+    pub fn trigger_measure(
+        &self,
+        int_clocks: u32,
+        num_meas: u32,
+        mode_flags: u8,
+        hold_temp_duty: u8,
+    ) -> Result<()> {
+        let mut pbuf = [0u8; 12];
+        pbuf[0] = if (mode_flags & MMF_LAMP) != 0 { 1 } else { 0 };
+        pbuf[1] = if (mode_flags & MMF_SCAN) != 0 { 1 } else { 0 };
+        pbuf[2] = if (mode_flags & MMF_HIGHGAIN) != 0 {
+            1
+        } else {
+            0
+        };
+        pbuf[3] = hold_temp_duty;
+        pbuf[4..8].copy_from_slice(&int_clocks.to_le_bytes());
+        pbuf[8..12].copy_from_slice(&num_meas.to_le_bytes());
+
+        self.handle.write_control(
+            request_type(Direction::Out, RequestType::Vendor, Recipient::Device),
+            CMD_TRIGGER_MEASURE,
+            0,
+            0,
+            &pbuf,
+            Duration::from_secs(2),
+        )?;
+        Ok(())
+    }
+
+    pub fn read_measurement(&self, num_meas: u32) -> Result<Vec<Vec<u16>>> {
+        let nsen = 137;
+        let bytes_per_read = nsen * 2;
+        let total_bytes = bytes_per_read * num_meas as usize;
+        let mut buf = vec![0u8; total_bytes];
+
+        let mut xferred = 0;
+        let mut readings = Vec::new();
+
+        let timeout = Duration::from_secs(5);
+
+        while xferred < total_bytes {
+            let n = self
+                .handle
+                .read_interrupt(0x81, &mut buf[xferred..], timeout)?;
+            if n == 0 {
+                break;
+            }
+            xferred += n;
+        }
+
+        if xferred % bytes_per_read != 0 {
+            return Err(rusb::Error::Other);
+        }
+
+        let actual_meas = xferred / bytes_per_read;
+        for i in 0..actual_meas {
+            let start = i * bytes_per_read;
+            let mut reading = Vec::new();
+            for j in 0..nsen {
+                let off = start + j * 2;
+                reading.push(u16::from_le_bytes(buf[off..off + 2].try_into().unwrap()));
+            }
+            readings.push(reading);
+        }
+
+        Ok(readings)
+    }
+
+    pub fn measure_spot(
+        &self,
+        int_time_sec: f64,
+        tick_duration_sec: f64,
+        lamp: bool,
+        high_gain: bool,
+    ) -> Result<Vec<u16>> {
+        let int_clocks = (int_time_sec / tick_duration_sec).round() as u32;
+        let mut flags = 0;
+        if lamp {
+            flags |= MMF_LAMP;
+        }
+        if high_gain {
+            flags |= MMF_HIGHGAIN;
+        }
+
+        self.trigger_measure(int_clocks, 1, flags, 0)?;
+
+        std::thread::sleep(Duration::from_millis((int_time_sec * 1000.0) as u64 + 200));
+
+        let readings = self.read_measurement(1)?;
+        if readings.is_empty() {
+            return Err(rusb::Error::NoDevice);
+        }
+        Ok(readings[0].clone())
     }
 }

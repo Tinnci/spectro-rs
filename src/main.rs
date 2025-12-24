@@ -6,8 +6,6 @@ use crate::munki::Munki;
 
 const XRITE_VID: u16 = 0x0765;
 const GRETAG_VID: u16 = 0x0971;
-const I1DISPLAY3_PID: u16 = 0x5020;
-const COLORMUNKI_PID: u16 = 0x6008;
 const COLORMUNKI_OLD_PID: u16 = 0x2007;
 
 fn main() -> rusb::Result<()> {
@@ -90,7 +88,8 @@ fn attempt_munki_connect<T: UsbContext>(
                 println!("  - Version: {}", v);
             }
 
-            if let Ok(info) = munki.get_firmware_info() {
+            let firmware_res = munki.get_firmware_info();
+            if let Ok(info) = &firmware_res {
                 info.print_details();
             }
 
@@ -134,6 +133,43 @@ fn attempt_munki_connect<T: UsbContext>(
                                         "  - White Reference (first 5): {:?}",
                                         &config.white_ref[0..5]
                                     );
+
+                                    println!("--- Measurement Test (Dark) ---");
+                                    if let Ok(fw) = &firmware_res {
+                                        let tick_sec = fw.tick_duration as f64 * 1e-6;
+                                        let min_int_sec =
+                                            (fw.min_int_count * fw.tick_duration) as f64 * 1e-6;
+                                        println!(
+                                            "  - Triggering measurement (Int: {}ms)...",
+                                            min_int_sec * 1000.0
+                                        );
+                                        match munki.measure_spot(
+                                            min_int_sec,
+                                            tick_sec,
+                                            false,
+                                            false,
+                                        ) {
+                                            Ok(raw_data) => {
+                                                println!("  - Measurement Successful!");
+                                                println!(
+                                                    "  - Raw spectral data (137 bands, first 10): {:?}",
+                                                    &raw_data[0..10]
+                                                );
+                                                let sum: u32 =
+                                                    raw_data.iter().map(|&x| x as u32).sum();
+                                                println!(
+                                                    "  - Data Sum: {} (Avg: {:.2})",
+                                                    sum,
+                                                    sum as f64 / 137.0
+                                                );
+                                            }
+                                            Err(e) => println!("  - Measurement Failed: {}", e),
+                                        }
+                                    } else {
+                                        println!(
+                                            "  - Cannot perform measurement: Firmware info not available."
+                                        );
+                                    }
                                 }
                                 Err(e) => println!("  - EEPROM Parsing Failed: {}", e),
                             },

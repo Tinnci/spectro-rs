@@ -1,0 +1,11 @@
+    Checking spectro-rs v0.1.0 (C:\Users\shiso\Downloads\Argyll_V3.4.1_src\spectro-rs)
+error[E0609]: no field `min_integration_time` on type `&MunkiFirmwareInfo`
+   --> src\main.rs:142:62
+    |
+142 | ...                   let min_int_sec = fw.min_integration_time as f64 * 1e-6;
+    |                                            ^^^^^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: available fields are: `fw_rev_major`, `fw_rev_minor`, `tick_duration`, `min_int_count`, `num_eeprom_blocks`, `eeprom_block_size`
+
+For more information about this error, try `rustc --explain E0609`.
+error: could not compile `spectro-rs` (bin "spectro-rs") due to 1 previous error
