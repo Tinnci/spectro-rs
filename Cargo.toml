@@ -30,4 +30,3 @@ publish = false
 tag-name = "v{{version}}"
 tag-message = "chore: Release {{version}}"
 pre-release-commit-message = "chore: Release {{version}}"
-post-release-commit-message = "chore: Prepare for next development iteration"
