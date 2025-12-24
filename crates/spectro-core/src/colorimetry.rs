@@ -190,34 +190,35 @@ pub mod illuminant {
 #[rustfmt::skip]
 pub mod weighting {
     /// Tristimulus weighting factors for X (D65, 2-degree, 10nm, 380-780nm)
-    /// Source: ASTM E308-18 Table 1
     pub const WX_D65_2_10: [f32; 41] = [
-        0.001, 0.012, 0.082, 0.323, 0.654, 0.635, 0.380, 0.149, 0.046, 0.006,
-        0.021, 0.124, 0.354, 0.672, 1.052, 1.442, 1.800, 2.053, 2.124, 2.031,
-        1.763, 1.403, 1.015, 0.669, 0.407, 0.232, 0.126, 0.065, 0.033, 0.017,
-        0.008, 0.004, 0.002, 0.001, 0.000, 0.008, 0.004, 0.002, 0.001, 0.000, 0.000
-    ];
-    /// Tristimulus weighting factors for Y (D65, 2-degree, 10nm, 380-780nm)
-    /// Source: ASTM E308-18 Table 1
-    pub const WY_D65_2_10: [f32; 41] = [
-        0.000, 0.000, 0.003, 0.016, 0.064, 0.185, 0.395, 0.643, 0.841, 0.956,
-        0.995, 0.989, 0.957, 0.916, 0.871, 0.816, 0.748, 0.666, 0.573, 0.473,
-        0.375, 0.286, 0.205, 0.138, 0.088, 0.053, 0.030, 0.016, 0.008, 0.004,
-        0.002, 0.001, 0.001, 0.000, 0.000, 0.003, 0.001, 0.001, 0.000, 0.000, 0.000
-    ];
-    /// Tristimulus weighting factors for Z (D65, 2-degree, 10nm, 380-780nm)
-    /// Source: ASTM E308-18 Table 1
-    /// NOTE: These values already include the D65 SPD weighting.
-    pub const WZ_D65_2_10: [f32; 41] = [
-        0.006, 0.057, 0.392, 1.543, 3.157, 3.082, 1.841, 0.722, 0.222, 0.029,
-        0.004, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000,
-        0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000,
-        0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000
+        0.007, 0.022, 0.112, 0.377, 1.188, 2.330, 3.459, 3.724, 3.243, 2.126, 
+        1.049, 0.330, 0.051, 0.095, 0.628, 1.687, 2.870, 4.267, 5.628, 6.948, 
+        8.310, 8.618, 9.050, 8.505, 7.077, 5.066, 3.549, 2.147, 1.252, 0.681, 
+        0.347, 0.150, 0.077, 0.041, 0.017, 0.009, 0.005, 0.002, 0.001, 0.001, 
+        0.000
     ];
 
-    /// Sum of WY_D65_2_10 weights (used for normalization verification)
-    /// When multiplied by reflectance=1.0 for all wavelengths, Y should equal 100.
-    pub const SUM_WY_D65_2_10: f32 = 10.683;
+    /// Tristimulus weighting factors for Y (D65, 2-degree, 10nm, 380-780nm)
+    pub const WY_D65_2_10: [f32; 41] = [
+        0.000, 0.001, 0.003, 0.010, 0.035, 0.095, 0.228, 0.421, 0.669, 0.989, 
+        1.524, 2.141, 3.344, 5.131, 7.041, 8.785, 9.425, 9.792, 9.416, 8.675, 
+        7.887, 6.354, 5.374, 4.265, 3.162, 2.089, 1.386, 0.810, 0.463, 0.249, 
+        0.126, 0.054, 0.028, 0.015, 0.006, 0.003, 0.002, 0.001, 0.000, 0.000, 
+        0.000
+    ];
+
+    /// Tristimulus weighting factors for Z (D65, 2-degree, 10nm, 380-780nm)
+    pub const WZ_D65_2_10: [f32; 41] = [
+        0.035, 0.119, 0.610, 2.059, 6.541, 13.031, 19.880, 22.491, 20.182, 13.888, 
+        7.167, 2.325, 0.492, 0.061, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 
+        0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 
+        0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 
+        0.000
+    ];
+
+    /// Sum of WY_D65_2_10 weights. 
+    /// Corrected to 100.0 to simplify normalization logic.
+    pub const SUM_WY_D65_2_10: f32 = 100.000;
 }
 
 /// Bradford chromatic adaptation transform.
@@ -755,5 +756,48 @@ pub mod appearance {
         let xyz = lab.to_xyz(from);
         let adapted = super::chromatic_adaptation::bradford_adapt(xyz, from, to);
         adapted.to_lab(to)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_d65_white_point_from_weighting() {
+        // Perfect diffuser (100% reflectance across all wavelengths)
+        let reflectance = [1.0f32; 41];
+        let xyz = XYZ::from_reflectance_10nm(&reflectance);
+
+        // Expected D65 white point (2-degree)
+        // X = 95.047
+        // Y = 100.000
+        // Z = 108.883
+        assert!(
+            (xyz.y - 100.0).abs() < 0.05,
+            "Y should be 100, got {}",
+            xyz.y
+        );
+        assert!(
+            (xyz.x - 95.05).abs() < 0.05,
+            "X should be ~95.05, got {}",
+            xyz.x
+        );
+        assert!(
+            (xyz.z - 108.88).abs() < 0.05,
+            "Z should be ~108.88, got {}",
+            xyz.z
+        );
+    }
+
+    #[test]
+    fn test_xyz_to_lab_d65() {
+        let white = illuminant::D65;
+        let lab = white.to_lab(white);
+
+        // Lab of the white point itself should be (100, 0, 0)
+        assert!((lab.l - 100.0).abs() < 1e-4);
+        assert!(lab.a.abs() < 1e-4);
+        assert!(lab.b.abs() < 1e-4);
     }
 }
