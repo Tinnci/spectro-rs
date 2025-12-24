@@ -1,32 +1,6 @@
-[package]
-name = "spectro-rs"
-version = "0.1.2"
-edition = "2021"
-authors = ["Tinnci <shisooe@gmail.com>"]
-description = "A high-performance Rust driver for X-Rite ColorMunki spectrometers supporting Reflective, Emissive, and Ambient modes."
-license = "GPL-3.0-only"
-repository = "https://github.com/Tinnci/spectro-rs"
-readme = "README.md"
-keywords = ["color", "spectrometer", "colormunki", "calibration", "cie"]
-categories = ["hardware-support", "science"]
-
-[dependencies]
-rusb = "0.9.4"
-thiserror = "2.0.11"
-rust-embed = "8.3.0"
-i18n-embed = { version = "0.14.1", features = ["fluent-system", "desktop-requester"] }
-i18n-embed-fl = "0.8.0"
-sys-locale = "0.3.1"
-dialoguer = "0.11.0"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-directories = "6.0"
-# LazyLock is stable in 1.80.0+, but we'll keep the direct std sync usage for simplicity.
-
-[package.metadata.release]
-# We only want cargo-release to handle version bumping, commit, tag, and push.
-# The actual publishing to crates.io is handled by GitHub Actions upon tag push.
-publish = false
-tag-name = "v{{version}}"
-tag-message = "chore: Release {{version}}"
-pre-release-commit-message = "chore: Release {{version}}"
+[workspace]
+members = [
+    "crates/spectro-core",
+    "crates/spectro-gui",
+]
+resolver = "2"

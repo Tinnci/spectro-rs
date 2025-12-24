@@ -1,0 +1,11 @@
+[package]
+name = "spectro-gui"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+spectro-core = { path = "../spectro-core" }
+eframe = "0.29.0"
+egui = "0.29.0"
+egui_plot = "0.29.0"
+crossbeam-channel = "0.5.13"

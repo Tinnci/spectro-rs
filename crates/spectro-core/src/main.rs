@@ -3,12 +3,14 @@
 //! This is the interactive command-line interface for the spectro-rs library.
 
 use dialoguer::{theme::ColorfulTheme, Select};
-use spectro_rs::{
+use spectro_core::{
     colorimetry::XYZ, device::DevicePosition, discover, i18n, t, MeasurementMode, Result,
 };
 
 fn main() -> Result<()> {
     i18n::init_i18n();
+
+    // --- Original CLI Logic ---
     println!("{}", t!("welcome"));
     println!("{}", t!("scanning"));
 
