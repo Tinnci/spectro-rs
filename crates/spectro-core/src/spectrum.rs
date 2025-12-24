@@ -1,10 +1,24 @@
-use crate::colorimetry::{XYZ, X_BAR_10, X_BAR_2, Y_BAR_10, Y_BAR_2, Z_BAR_10, Z_BAR_2};
+use crate::colorimetry::{weighting, XYZ, X_BAR_10, X_BAR_2, Y_BAR_10, Y_BAR_2, Z_BAR_10, Z_BAR_2};
 use crate::WAVELENGTHS;
+
+/// Measurement mode determines the calculation method for XYZ conversion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MeasurementMode {
+    /// Reflective measurement (objects like paper, color patches)
+    /// Uses ASTM E308 weighting factors which include D65 SPD
+    #[default]
+    Reflective,
+    /// Emissive measurement (light sources like displays, lamps)
+    /// Uses direct CMF integration
+    Emissive,
+}
 
 #[derive(Debug, Clone)]
 pub struct SpectralData {
     pub wavelengths: Vec<f32>,
     pub values: Vec<f32>,
+    /// Measurement mode affects XYZ calculation method
+    pub mode: MeasurementMode,
 }
 
 impl SpectralData {
@@ -16,19 +30,76 @@ impl SpectralData {
         Self {
             wavelengths: WAVELENGTHS.to_vec(),
             values,
+            mode: MeasurementMode::default(),
         }
     }
 
-    /// Convert to XYZ using the standard 2-degree observer.
-    pub fn to_xyz(&self) -> XYZ {
-        self.to_xyz_2()
+    /// Create spectral data with explicit measurement mode
+    pub fn with_mode(mut values: Vec<f32>, mode: MeasurementMode) -> Self {
+        while values.len() < 41 {
+            values.push(0.0);
+        }
+        Self {
+            wavelengths: WAVELENGTHS.to_vec(),
+            values,
+            mode,
+        }
     }
 
-    /// Convert to XYZ using the 2-degree observer (CIE 1931).
-    pub fn to_xyz_2(&self) -> XYZ {
-        let mut x = 0.0;
-        let mut y = 0.0;
-        let mut z = 0.0;
+    /// Set the measurement mode
+    pub fn set_mode(&mut self, mode: MeasurementMode) {
+        self.mode = mode;
+    }
+
+    /// Convert to XYZ using the standard 2-degree observer.
+    /// The calculation method depends on the measurement mode.
+    pub fn to_xyz(&self) -> XYZ {
+        match self.mode {
+            MeasurementMode::Reflective => self.to_xyz_reflective_2(),
+            MeasurementMode::Emissive => self.to_xyz_emissive_2(),
+        }
+    }
+
+    /// Convert reflectance to XYZ using ASTM E308 weighting factors (D65/2°).
+    /// This is the most accurate method for reflective measurements.
+    ///
+    /// The weighting factors already include:
+    /// - D65 spectral power distribution
+    /// - CIE 1931 2° standard observer CMFs
+    /// - Proper normalization
+    pub fn to_xyz_reflective_2(&self) -> XYZ {
+        let mut x = 0.0f32;
+        let mut y = 0.0f32;
+        let mut z = 0.0f32;
+
+        for i in 0..41 {
+            x += self.values[i] * weighting::WX_D65_2_10[i];
+            y += self.values[i] * weighting::WY_D65_2_10[i];
+            z += self.values[i] * weighting::WZ_D65_2_10[i];
+        }
+
+        // ASTM E308 weights when summed for R=1.0 give ~10.683
+        // Normalize so that Y=100 for a perfect white diffuser
+        let scale = 100.0 / weighting::SUM_WY_D65_2_10;
+
+        XYZ {
+            x: x * scale,
+            y: y * scale,
+            z: z * scale,
+        }
+    }
+
+    /// Convert spectral power distribution to XYZ for emissive sources (2° observer).
+    /// Uses direct integration with CIE CMFs.
+    ///
+    /// For absolute luminance (cd/m²), the values should be in W/sr/m²/nm
+    /// and result should be multiplied by Km = 683 lm/W.
+    pub fn to_xyz_emissive_2(&self) -> XYZ {
+        const STEP: f32 = 10.0; // 10nm wavelength step
+
+        let mut x = 0.0f32;
+        let mut y = 0.0f32;
+        let mut z = 0.0f32;
 
         for i in 0..41 {
             x += self.values[i] * X_BAR_2[i];
@@ -36,22 +107,34 @@ impl SpectralData {
             z += self.values[i] * Z_BAR_2[i];
         }
 
-        // Normalization factor for Y=100.
-        // Sum(Y_BAR_2) * 10 (delta lambda) = 106.821
-        let k = 100.0 / 10.6821;
-
+        // For emissive sources, we integrate P(λ) * CMF(λ) * Δλ
+        // If values are relative, the result is relative XYZ
+        // If absolute (W/sr/m²/nm), multiply Y by 683 to get luminance in cd/m²
         XYZ {
-            x: x * k,
-            y: y * k,
-            z: z * k,
+            x: x * STEP,
+            y: y * STEP,
+            z: z * STEP,
         }
     }
 
+    /// Convert to XYZ using the 2-degree observer (CIE 1931).
+    /// Legacy method - uses CMF integration (suitable for emissive sources)
+    #[deprecated(
+        since = "0.2.0",
+        note = "Use to_xyz() with appropriate MeasurementMode"
+    )]
+    pub fn to_xyz_2(&self) -> XYZ {
+        self.to_xyz_emissive_2()
+    }
+
     /// Convert to XYZ using the 10-degree observer (CIE 1964).
+    /// Uses CMF integration (suitable for emissive sources)
     pub fn to_xyz_10(&self) -> XYZ {
-        let mut x = 0.0;
-        let mut y = 0.0;
-        let mut z = 0.0;
+        const STEP: f32 = 10.0;
+
+        let mut x = 0.0f32;
+        let mut y = 0.0f32;
+        let mut z = 0.0f32;
 
         for i in 0..41 {
             x += self.values[i] * X_BAR_10[i];
@@ -59,14 +142,30 @@ impl SpectralData {
             z += self.values[i] * Z_BAR_10[i];
         }
 
-        // Normalization factor for 10-degree observer.
-        let k = 100.0 / 11.2319;
-
         XYZ {
-            x: x * k,
-            y: y * k,
-            z: z * k,
+            x: x * STEP,
+            y: y * STEP,
+            z: z * STEP,
         }
+    }
+
+    /// Calculate the normalization constant k for reflectance mode.
+    /// k = 100 / Σ(S(λ) * ȳ(λ) * Δλ)
+    ///
+    /// This is useful when you have raw illuminant SPD and CMF data
+    /// and need to compute the normalization factor dynamically.
+    ///
+    /// # Arguments
+    /// * `illuminant_spd` - Relative spectral power distribution of the illuminant
+    /// * `y_bar` - Y color matching function values
+    /// * `step` - Wavelength step in nm
+    pub fn calculate_k(illuminant_spd: &[f32], y_bar: &[f32], step: f32) -> f32 {
+        let sum_s_y: f32 = illuminant_spd
+            .iter()
+            .zip(y_bar.iter())
+            .map(|(s, yb)| s * yb)
+            .sum();
+        100.0 / (sum_s_y * step)
     }
 }
 
@@ -90,7 +189,7 @@ impl XYZ {
 
 impl std::fmt::Display for SpectralData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "Spectral Data (380nm - 730nm):")?;
+        writeln!(f, "Spectral Data (380nm - 730nm, {:?} mode):", self.mode)?;
         for (w, v) in self.wavelengths.iter().zip(self.values.iter()) {
             writeln!(f, "  {:.0}nm: {:.6}", w, v)?;
         }

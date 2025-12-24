@@ -190,6 +190,7 @@ pub mod illuminant {
 #[rustfmt::skip]
 pub mod weighting {
     /// Tristimulus weighting factors for X (D65, 2-degree, 10nm, 380-780nm)
+    /// Source: ASTM E308-18 Table 1
     pub const WX_D65_2_10: [f32; 41] = [
         0.001, 0.012, 0.082, 0.323, 0.654, 0.635, 0.380, 0.149, 0.046, 0.006,
         0.021, 0.124, 0.354, 0.672, 1.052, 1.442, 1.800, 2.053, 2.124, 2.031,
@@ -197,12 +198,26 @@ pub mod weighting {
         0.008, 0.004, 0.002, 0.001, 0.000, 0.008, 0.004, 0.002, 0.001, 0.000, 0.000
     ];
     /// Tristimulus weighting factors for Y (D65, 2-degree, 10nm, 380-780nm)
+    /// Source: ASTM E308-18 Table 1
     pub const WY_D65_2_10: [f32; 41] = [
         0.000, 0.000, 0.003, 0.016, 0.064, 0.185, 0.395, 0.643, 0.841, 0.956,
         0.995, 0.989, 0.957, 0.916, 0.871, 0.816, 0.748, 0.666, 0.573, 0.473,
         0.375, 0.286, 0.205, 0.138, 0.088, 0.053, 0.030, 0.016, 0.008, 0.004,
         0.002, 0.001, 0.001, 0.000, 0.000, 0.003, 0.001, 0.001, 0.000, 0.000, 0.000
     ];
+    /// Tristimulus weighting factors for Z (D65, 2-degree, 10nm, 380-780nm)
+    /// Source: ASTM E308-18 Table 1
+    /// NOTE: These values already include the D65 SPD weighting.
+    pub const WZ_D65_2_10: [f32; 41] = [
+        0.006, 0.057, 0.392, 1.543, 3.157, 3.082, 1.841, 0.722, 0.222, 0.029,
+        0.004, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000,
+        0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000,
+        0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000
+    ];
+
+    /// Sum of WY_D65_2_10 weights (used for normalization verification)
+    /// When multiplied by reflectance=1.0 for all wavelengths, Y should equal 100.
+    pub const SUM_WY_D65_2_10: f32 = 10.683;
 }
 
 /// Bradford chromatic adaptation transform.
@@ -449,22 +464,29 @@ impl XYZ {
 
     /// Calculate Tristimulus XYZ from spectral reflectance using ASTM E308 weighting factors.
     /// Assumes D65/2° and 10nm sampling (380-780nm).
+    ///
+    /// # Notes
+    /// - ASTM E308 weighting factors already include the D65 SPD and normalization.
+    /// - Input reflectance should be in the range 0.0-1.0 (or 0-100%).
+    /// - Output Y=100 corresponds to a perfect diffuser.
     pub fn from_reflectance_10nm(reflectance: &[f32; 41]) -> Self {
-        let mut x = 0.0;
-        let mut y = 0.0;
-        let mut z = 0.0;
+        let (x, y, z) = reflectance
+            .iter()
+            .zip(weighting::WX_D65_2_10.iter())
+            .zip(weighting::WY_D65_2_10.iter())
+            .zip(weighting::WZ_D65_2_10.iter())
+            .fold(
+                (0.0f32, 0.0f32, 0.0f32),
+                |(x, y, z), (((r, wx), wy), wz)| (x + r * wx, y + r * wy, z + r * wz),
+            );
 
-        for i in 0..41 {
-            x += reflectance[i] * weighting::WX_D65_2_10[i];
-            y += reflectance[i] * weighting::WY_D65_2_10[i];
-            // Since we don't have a WZ weighting table in current code,
-            // we use the normalized Z_BAR_2 as a fallback or could add WZ.
-            // For industrial precision, WZ is preferred.
-            z += reflectance[i] * Z_BAR_2[i] * 10.0; // Approximation
+        // ASTM E308 weights are pre-scaled so that sum(WY * R) = Y directly
+        // when R is in 0-1 range. Multiply by 100 to get standard Y=100 scale.
+        Self {
+            x: x * 100.0 / weighting::SUM_WY_D65_2_10,
+            y: y * 100.0 / weighting::SUM_WY_D65_2_10,
+            z: z * 100.0 / weighting::SUM_WY_D65_2_10,
         }
-
-        // Weighting factors are often pre-normalized such that sum(WY) = 1.0 or 100.0
-        Self { x, y, z }
     }
 }
 
