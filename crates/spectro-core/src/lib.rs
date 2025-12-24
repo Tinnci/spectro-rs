@@ -111,7 +111,7 @@ pub use transport::{Transport, UsbTransport};
 // ============================================================================
 
 /// Specifies the type of measurement to perform.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum MeasurementMode {
     /// Reflective measurement (paper, prints, materials).
     /// Requires prior calibration with white tile.

@@ -2,7 +2,7 @@ use crate::colorimetry::{weighting, XYZ, X_BAR_10, X_BAR_2, Y_BAR_10, Y_BAR_2, Z
 use crate::WAVELENGTHS;
 
 /// Measurement mode determines the calculation method for XYZ conversion.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum MeasurementMode {
     /// Reflective measurement (objects like paper, color patches)
     /// Uses ASTM E308 weighting factors which include D65 SPD
@@ -13,7 +13,7 @@ pub enum MeasurementMode {
     Emissive,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SpectralData {
     pub wavelengths: Vec<f32>,
     pub values: Vec<f32>,

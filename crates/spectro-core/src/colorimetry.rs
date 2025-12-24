@@ -299,14 +299,14 @@ pub mod chromatic_adaptation {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct XYZ {
     pub x: f32,
     pub y: f32,
     pub z: f32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Lab {
     pub l: f32,
     pub a: f32,
@@ -315,7 +315,7 @@ pub struct Lab {
 
 /// LMS color space representing cone responses (Long, Medium, Short wavelengths).
 /// Based on CIE 2015 physiologically-based sensitivity data.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LMS {
     pub l: f32,
     pub m: f32,
@@ -326,7 +326,7 @@ pub struct LMS {
 /// Designed for HDR content with excellent uniformity across the entire
 /// luminance range (0-10,000 nits). Euclidean distance in this space
 /// directly represents perceptual difference.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Jzazbz {
     /// Lightness (0.0 = black, higher = brighter, no upper limit for HDR)
     pub jz: f32,

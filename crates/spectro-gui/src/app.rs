@@ -8,9 +8,9 @@
 
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use eframe::egui;
-use egui_plot::{HLine, Legend, Line, Plot, PlotPoints, VLine};
+use egui_plot::{HLine, Legend, Line, Plot, PlotPoints, Points, VLine};
 use spectro_rs::{
-    colorimetry::{illuminant, Lab, XYZ},
+    colorimetry::{illuminant, Lab, XYZ, X_BAR_2, Y_BAR_2, Z_BAR_2},
     discover, BoxedSpectrometer, DeviceInfo, MeasurementMode, SpectralData,
 };
 use std::thread;
@@ -39,7 +39,7 @@ struct ExtendedDeviceInfo {
 }
 
 /// Measurement history entry
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 struct MeasurementEntry {
     timestamp: String,
     mode: MeasurementMode,
@@ -110,6 +110,7 @@ enum ExpertTab {
     RawSensor,
     DeviceInfo,
     Algorithm,
+    Chromaticity,
 }
 
 // ============================================================================
@@ -324,6 +325,57 @@ impl SpectroApp {
         // Keep only last 50 measurements
         if self.measurement_history.len() > 50 {
             self.measurement_history.pop();
+        }
+    }
+
+    /// Export the measurement history to a CSV file.
+    fn export_history_csv(&self) {
+        if self.measurement_history.is_empty() {
+            return;
+        }
+
+        let file_path = rfd::FileDialog::new()
+            .add_filter("CSV File", &["csv"])
+            .set_file_name("measurements.csv")
+            .save_file();
+
+        if let Some(path) = file_path {
+            let mut csv = String::from("Timestamp,Mode,L*,a*,b*,DeltaE\n");
+            for entry in &self.measurement_history {
+                csv.push_str(&format!(
+                    "{},{:?},{:.4},{:.4},{:.4},{}\n",
+                    entry.timestamp,
+                    entry.mode,
+                    entry.lab.l,
+                    entry.lab.a,
+                    entry.lab.b,
+                    entry.delta_e.map(|e| e.to_string()).unwrap_or_default()
+                ));
+            }
+
+            if let Err(e) = std::fs::write(path, csv) {
+                eprintln!("Failed to write CSV: {}", e);
+            }
+        }
+    }
+
+    /// Export the measurement history to a JSON file.
+    fn export_history_json(&self) {
+        if self.measurement_history.is_empty() {
+            return;
+        }
+
+        let file_path = rfd::FileDialog::new()
+            .add_filter("JSON File", &["json"])
+            .set_file_name("measurements.json")
+            .save_file();
+
+        if let Some(path) = file_path {
+            if let Ok(json) = serde_json::to_string_pretty(&self.measurement_history) {
+                if let Err(e) = std::fs::write(path, json) {
+                    eprintln!("Failed to write JSON: {}", e);
+                }
+            }
         }
     }
 
@@ -723,6 +775,11 @@ impl SpectroApp {
             ui.selectable_value(&mut self.expert_tab, ExpertTab::DeviceInfo, "📱 Device");
             ui.selectable_value(&mut self.expert_tab, ExpertTab::RawSensor, "📈 Raw Data");
             ui.selectable_value(&mut self.expert_tab, ExpertTab::Algorithm, "🧮 Algorithm");
+            ui.selectable_value(
+                &mut self.expert_tab,
+                ExpertTab::Chromaticity,
+                "🎯 xy Diagram",
+            );
         });
 
         ui.separator();
@@ -731,6 +788,7 @@ impl SpectroApp {
             ExpertTab::DeviceInfo => self.render_device_info_tab(ui),
             ExpertTab::RawSensor => self.render_raw_sensor_tab(ui),
             ExpertTab::Algorithm => self.render_algorithm_tab(ui),
+            ExpertTab::Chromaticity => self.render_chromaticity_tab(ui),
         }
     }
 
@@ -1022,6 +1080,89 @@ impl SpectroApp {
                     });
             });
         }
+    }
+
+    fn render_chromaticity_tab(&self, ui: &mut egui::Ui) {
+        ui.add_space(5.0);
+        ui.heading("🎯 CIE 1931 xy Chromaticity");
+        ui.add_space(10.0);
+
+        let plot = Plot::new("chromaticity_plot")
+            .data_aspect(1.0)
+            .view_aspect(1.0)
+            .include_x(0.0)
+            .include_x(0.8)
+            .include_y(0.0)
+            .include_y(0.9)
+            .legend(Legend::default())
+            .allow_zoom(true)
+            .allow_drag(true);
+
+        plot.show(ui, |plot_ui| {
+            // 1. Draw Spectral Locus (Horseshoe)
+            let mut locus_points = Vec::new();
+            for i in 0..41 {
+                let sum = X_BAR_2[i] + Y_BAR_2[i] + Z_BAR_2[i];
+                if sum > 0.0 {
+                    locus_points.push([(X_BAR_2[i] / sum) as f64, (Y_BAR_2[i] / sum) as f64]);
+                }
+            }
+            // Close the horseshoe with the purple line (connect 380nm to 780nm)
+            if !locus_points.is_empty() {
+                locus_points.push(locus_points[0]);
+            }
+
+            plot_ui.line(
+                Line::new(PlotPoints::from(locus_points))
+                    .color(egui::Color32::from_gray(100))
+                    .name("Spectral Locus"),
+            );
+
+            // 2. Draw D65 White Point
+            let d65_x = 0.31272;
+            let d65_y = 0.32903;
+            plot_ui.points(
+                Points::new(vec![[d65_x, d65_y]])
+                    .color(egui::Color32::WHITE)
+                    .shape(egui_plot::MarkerShape::Plus)
+                    .name("D65"),
+            );
+
+            // 3. Draw History Trail (Faded)
+            let history_points: Vec<[f64; 2]> = self
+                .measurement_history
+                .iter()
+                .rev() // Draw from oldest to newest
+                .map(|e| {
+                    let xyz = e.data.to_xyz();
+                    let (x, y) = xyz.to_chromaticity();
+                    [x as f64, y as f64]
+                })
+                .collect();
+
+            if history_points.len() > 1 {
+                plot_ui.line(
+                    Line::new(PlotPoints::from(history_points))
+                        .color(egui::Color32::from_rgba_unmultiplied(100, 100, 100, 100))
+                        .name("History Path"),
+                );
+            }
+
+            // 4. Draw Current Point
+            if let Some(data) = &self.last_result {
+                let xyz = data.to_xyz();
+                let (x, y) = xyz.to_chromaticity();
+                plot_ui.points(
+                    Points::new(vec![[x as f64, y as f64]])
+                        .color(egui::Color32::RED)
+                        .radius(4.0)
+                        .name("Current Entry"),
+                );
+            }
+        });
+
+        ui.add_space(10.0);
+        ui.label("The horseshoe-shaped region represents all colors visible to the human eye. The red dot indicates the most recent measurement.");
     }
 }
 
@@ -1351,8 +1492,11 @@ impl eframe::App for SpectroApp {
 
                     ui.add_space(10.0);
                     ui.horizontal(|ui| {
-                        if ui.button("Export CSV").clicked() {
-                            // TODO: Implement CSV export
+                        if ui.button("CSV").clicked() {
+                            self.export_history_csv();
+                        }
+                        if ui.button("JSON").clicked() {
+                            self.export_history_json();
                         }
                         if ui.button("Clear").clicked() {
                             self.measurement_history.clear();

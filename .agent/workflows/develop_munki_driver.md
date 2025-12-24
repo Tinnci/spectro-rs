@@ -51,8 +51,8 @@ This workflow outlines the steps to develop a Rust-based driver for the X-Rite C
 - [x] Measurement History sidebar (Expert mode).
 - [x] Reference Color Comparison with ΔE Pass/Fail.
 - [x] Graceful device disconnect handling with reconnect.
-- [ ] Export CSV/JSON for measurement history.
-- [ ] CIE 1931 xy chromaticity diagram.
+- [x] Export CSV/JSON for measurement history.
+- [x] CIE 1931 xy chromaticity diagram.
 - [ ] ICC Profile support for CMYK conversion.
 
 ## 7. Infrastructure
