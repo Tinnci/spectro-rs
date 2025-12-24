@@ -5,7 +5,7 @@
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use eframe::egui;
 use egui_plot::{HLine, Line, Plot, PlotPoints};
-use spectro_core::{discover, BoxedSpectrometer, MeasurementMode, SpectralData};
+use spectro_rs::{discover, BoxedSpectrometer, MeasurementMode, SpectralData};
 use std::thread;
 
 /// Messages sent from the UI thread to the Device worker thread.
@@ -186,7 +186,7 @@ impl eframe::App for SpectroApp {
 
                 if let Some(data) = &self.last_result {
                     let xyz = data.to_xyz();
-                    let lab = xyz.to_lab(spectro_core::colorimetry::illuminant::D65_2);
+                    let lab = xyz.to_lab(spectro_rs::colorimetry::illuminant::D65_2);
 
                     // Color Swatch
                     let (r, g, b) = (100, 100, 100); // TODO: Implement Lab to sRGB conversion

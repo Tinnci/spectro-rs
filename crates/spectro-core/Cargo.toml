@@ -1,5 +1,5 @@
 [package]
-name = "spectro-core"
+name = "spectro-rs"
 version = "0.1.2"
 edition = "2021"
 authors = ["Tinnci <shisooe@gmail.com>"]

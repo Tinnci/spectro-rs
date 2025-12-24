@@ -3,7 +3,7 @@
 //! This is the interactive command-line interface for the spectro-rs library.
 
 use dialoguer::{theme::ColorfulTheme, Select};
-use spectro_core::{
+use spectro_rs::{
     colorimetry::XYZ, device::DevicePosition, discover, i18n, t, MeasurementMode, Result,
 };
 

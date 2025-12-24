@@ -1,7 +1,7 @@
 mod app;
 
 use eframe::egui;
-use spectro_core::Result;
+use spectro_rs::Result;
 
 fn main() -> Result<()> {
     let options = eframe::NativeOptions {
@@ -16,5 +16,5 @@ fn main() -> Result<()> {
         options,
         Box::new(|cc| Ok(Box::new(app::SpectroApp::new(cc)))),
     )
-    .map_err(|e| spectro_core::SpectroError::Device(format!("GUI runtime error: {}", e)))
+    .map_err(|e| spectro_rs::SpectroError::Device(format!("GUI runtime error: {}", e)))
 }

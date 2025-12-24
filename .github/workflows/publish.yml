@@ -15,12 +15,32 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libusb-1.0-0-dev
+          sudo apt-get install -y libusb-1.0-0-dev libgtk-3-dev libwayland-dev libxkbcommon-dev
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
       - name: Publish to Crates.io
-        run: cargo publish --token ${CRATES_IO_TOKEN}
+        run: cargo publish -p spectro-rs --token ${CRATES_IO_TOKEN}
         env:
           CRATES_IO_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+
+  release_binaries:
+    name: Release Binaries
+    needs: publish
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build GUI App (Windows)
+        run: cargo build -p spectro-gui --release
+        
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: target/release/spectro-gui.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
