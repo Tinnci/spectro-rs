@@ -1,0 +1,9 @@
+[package]
+name = "spectro-rs"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+hex = "0.4.3"
+hidapi = "2.6.4"
+rusb = "0.9.4"
