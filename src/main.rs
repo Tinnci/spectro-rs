@@ -1,83 +1,126 @@
+use dialoguer::{Select, theme::ColorfulTheme};
 use rusb::{Context, UsbContext};
-use spectro_rs::Result;
 use spectro_rs::munki::Munki;
+use spectro_rs::{Result, i18n, t};
 
 fn main() -> Result<()> {
+    // 1. Initialize i18n
+    i18n::init_i18n();
+    println!("{}", t!("welcome"));
+
+    // 2. Scan for devices
     let context = Context::new()?;
     let devices = context.devices()?;
 
-    println!("Scanning for devices...");
+    println!("{}", t!("scanning"));
 
+    let mut found_device = None;
     for device in devices.iter() {
         let device_desc = device.device_descriptor()?;
         let vid = device_desc.vendor_id();
         let pid = device_desc.product_id();
 
+        // 0x0971:0x2007 (ColorMunki)
         if (vid == 0x0765 || vid == 0x0971) && pid == 0x2007 {
-            println!("\x1b[32mTarget Device Found: ColorMunki (Original)\x1b[0m");
-
-            let handle = device.open()?;
-            handle.claim_interface(0)?;
-
-            let mut munki = Munki::new(handle);
-
-            println!("--- Device Info ---");
-            if let Ok(v) = munki.get_version_string() {
-                println!("  - Version: {}", v);
-            }
-
-            let fw = munki.get_firmware_info()?;
-            println!(
-                "  - Firmware Revision: {}.{}",
-                fw.fw_rev_major, fw.fw_rev_minor
-            );
-
-            if let Ok(status) = munki.get_status() {
-                println!(
-                    "  - Status: {} (Raw: {})",
-                    status.position_name(),
-                    status.sensor_position
-                );
-            }
-
-            println!("--- EEPROM Data ---");
-            let size = munki.get_calibration_size()?;
-            let data = munki.read_eeprom(0, size)?;
-            let config = munki.parse_eeprom(&data)?;
-            println!("  - Serial Number: {}", config.serial_number);
-
-            munki.set_config(config);
-
-            println!("\x1b[33m--- Calibration Required ---\x1b[0m");
-            println!("  1. Turn the dial to the \x1b[1mWhite Dot\x1b[0m.");
-            println!("  2. Press Enter to start...");
-            let mut input = String::new();
-            let _ = std::io::stdin().read_line(&mut input);
-
-            let tick_sec = fw.tick_duration as f64 * 1e-6;
-            let min_int_sec = (fw.min_int_count * fw.tick_duration) as f64 * 1e-6;
-
-            println!("  - Step 1/2: Dark Frame subtraction...");
-            if let Ok(raw_dark) = munki.measure_spot(min_int_sec, tick_sec, false, false) {
-                munki.dark_ref = Some(raw_dark);
-            }
-
-            println!("  - Step 2/2: White tile calibration...");
-            munki
-                .compute_white_calibration(min_int_sec, tick_sec)
-                .map_err(|e| e)?;
-
-            println!("\x1b[32m  Calibration Success!\x1b[0m");
-
-            println!("--- Measurement Test (Calibrated) ---");
-            let raw_data = munki.measure_spot(min_int_sec, tick_sec, true, false)?;
-            let spec = munki.process_spectrum(&raw_data, min_int_sec, false)?;
-            println!("{}", spec);
-
-            return Ok(());
+            found_device = Some(device);
+            break;
         }
     }
 
-    println!("No ColorMunki found.");
+    let device = found_device.ok_or_else(|| {
+        println!("{}", t!("no-device"));
+        spectro_rs::SpectroError::Device("No device found".into())
+    })?;
+
+    println!("{}", t!("target-found"));
+
+    let handle = device.open()?;
+    handle.claim_interface(0)?;
+
+    let mut munki = Munki::new(handle);
+
+    // Initial Setup
+    let fw = munki.get_firmware_info()?;
+    let size = munki.get_calibration_size()?;
+    let data = munki.read_eeprom(0, size)?;
+    let config = munki.parse_eeprom(&data)?;
+    munki.set_config(config);
+
+    let tick_sec = fw.tick_duration as f64 * 1e-6;
+    let min_int_sec = (fw.min_int_count * fw.tick_duration) as f64 * 1e-6;
+
+    // Interactive Loop
+    loop {
+        let selections = &[
+            t!("menu-measure").to_string(),
+            t!("menu-calibrate").to_string(),
+            t!("menu-exit").to_string(),
+        ];
+
+        let selection = Select::with_theme(&ColorfulTheme::default())
+            .with_prompt(t!("menu-title").to_string())
+            .default(0)
+            .items(&selections[..])
+            .interact()
+            .unwrap();
+
+        match selection {
+            0 => {
+                // Measure
+                match munki.measure_spot(min_int_sec, tick_sec, true, false) {
+                    Ok(raw_data) => {
+                        match munki.process_spectrum(&raw_data, min_int_sec, false) {
+                            Ok(spec) => {
+                                println!("\n\x1b[32m{}\x1b[0m", t!("spectral-success"));
+                                println!("{}", spec);
+
+                                // Colorimetry
+                                let xyz = spec.to_xyz();
+                                // D50 White point (approximate for Munki white tile ref)
+                                let d50 = spectro_rs::colorimetry::XYZ {
+                                    x: 96.42,
+                                    y: 100.0,
+                                    z: 82.49,
+                                };
+                                let lab = xyz.to_lab(d50);
+                                println!(
+                                    "\x1b[33mCIE XYZ:\x1b[0m X:{:.2}, Y:{:.2}, Z:{:.2}",
+                                    xyz.x, xyz.y, xyz.z
+                                );
+                                println!(
+                                    "\x1b[35mCIE L*a*b*:\x1b[0m L:{:.2}, a:{:.2}, b:{:.2}\n",
+                                    lab.l, lab.a, lab.b
+                                );
+                            }
+                            Err(e) => println!("Error: {}", e),
+                        }
+                    }
+                    Err(e) => println!("Measurement failed: {}", e),
+                }
+            }
+            1 => {
+                // Calibrate
+                println!("\n{}", t!("calibration-required"));
+                println!("{}", t!("dial-white-dot"));
+                println!("{}", t!("press-enter"));
+                let mut input = String::new();
+                let _ = std::io::stdin().read_line(&mut input);
+
+                println!("{}", t!("step-dark"));
+                if let Ok(raw_dark) = munki.measure_spot(min_int_sec, tick_sec, false, false) {
+                    munki.dark_ref = Some(raw_dark);
+                }
+
+                println!("{}", t!("step-white"));
+                match munki.compute_white_calibration(min_int_sec, tick_sec) {
+                    Ok(_) => println!("\x1b[32m{}\x1b[0m\n", t!("cal-success")),
+                    Err(e) => println!("\x1b[31mError: {}\x1b[0m\n", e),
+                }
+            }
+            2 => break,
+            _ => unreachable!(),
+        }
+    }
+
     Ok(())
 }

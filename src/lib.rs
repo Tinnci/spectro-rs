@@ -20,6 +20,8 @@ pub const WAVELENGTHS: [f32; 36] = [
     640.0, 650.0, 660.0, 670.0, 680.0, 690.0, 700.0, 710.0, 720.0, 730.0,
 ];
 
+pub mod colorimetry;
+pub mod i18n;
 pub mod munki;
 pub mod spectrum;
 

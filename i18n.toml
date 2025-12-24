@@ -1,0 +1,6 @@
+# i18n.toml
+fallback_language = "en-US"
+supported_languages = ["en-US", "zh-CN"]
+
+[fluent]
+assets_dir = "i18n"

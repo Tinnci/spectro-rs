@@ -1,4 +1,5 @@
 use crate::WAVELENGTHS;
+use crate::colorimetry::{X_BAR, XYZ, Y_BAR, Z_BAR};
 
 #[derive(Debug, Clone)]
 pub struct SpectralData {
@@ -12,6 +13,21 @@ impl SpectralData {
             wavelengths: WAVELENGTHS.to_vec(),
             values,
         }
+    }
+
+    pub fn to_xyz(&self) -> XYZ {
+        let mut x = 0.0;
+        let mut y = 0.0;
+        let mut z = 0.0;
+
+        for i in 0..36 {
+            x += self.values[i] * X_BAR[i];
+            y += self.values[i] * Y_BAR[i];
+            z += self.values[i] * Z_BAR[i];
+        }
+
+        // Normalize constants based on 10nm step integration
+        XYZ { x, y, z }
     }
 }
 

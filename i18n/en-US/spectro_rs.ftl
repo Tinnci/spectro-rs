@@ -1,0 +1,16 @@
+welcome = Welcome to spectro-rs!
+scanning = Scanning for devices...
+target-found = Target Device Found: ColorMunki (Original)
+calibration-required = --- Calibration Required ---
+dial-white-dot = 1. Turn the dial to the White Dot.
+press-enter = 2. Press Enter to start...
+step-dark = - Step 1/2: Dark Frame subtraction...
+step-white = - Step 2/2: White tile calibration...
+cal-success = Calibration Success!
+measuring-white = Measuring white tile (Lamp ON)...
+spectral-success = Spectral Conversion Successful!
+no-device = No ColorMunki found.
+menu-title = Please select an action:
+menu-measure = Measure Spot Color
+menu-calibrate = Restart Calibration
+menu-exit = Exit

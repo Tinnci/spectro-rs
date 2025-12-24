@@ -1,0 +1,16 @@
+welcome = 欢迎使用 spectro-rs！
+scanning = 正在扫描设备...
+target-found = 找到目标设备：ColorMunki (Original)
+calibration-required = --- 需要校准 ---
+dial-white-dot = 1. 请将拨盘转至“白点”位置（校准位）。
+press-enter = 2. 按回车键开始校准...
+step-dark = - 步骤 1/2：正在进行黑场（暗电流）扣除...
+step-white = - 步骤 2/2：正在进行白板校准...
+cal-success = 校准成功！
+measuring-white = 正在测量白板（灯源已开启）...
+spectral-success = 光谱转换成功！
+no-device = 未找到 ColorMunki 设备。
+menu-title = 请选择操作：
+menu-measure = 测量样色 (Spot Color)
+menu-calibrate = 重新校准
+menu-exit = 退出
