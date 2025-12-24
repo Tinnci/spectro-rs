@@ -43,9 +43,9 @@ fn main() -> Result<()> {
 
     loop {
         let selections = &[
-            t!("menu-measure").to_string(),          // Reflective
-            t!("menu-measure-emissive").to_string(), // Emissive
-            t!("menu-measure-ambient").to_string(),  // Ambient
+            t!("menu-measure").to_string(),
+            t!("menu-measure-emissive").to_string(),
+            t!("menu-measure-ambient").to_string(),
             t!("menu-calibrate").to_string(),
             t!("menu-exit").to_string(),
         ];
@@ -65,11 +65,9 @@ fn main() -> Result<()> {
                     _ => MeasurementMode::Ambient,
                 };
 
-                // Check position for Ambient
                 if mode == MeasurementMode::Ambient {
                     let status = munki.get_status()?;
                     if status.sensor_position != 1 {
-                        // Position 1 is typically Ambient/Projector
                         println!(
                             "\n\x1b[33m[Notice]\x1b[0m Please turn the dial to the \x1b[1mAmbient/Diffuser\x1b[0m position."
                         );
@@ -91,8 +89,18 @@ fn main() -> Result<()> {
                         match munki.process_spectrum(&raw_data, min_int_sec, high_gain, mode) {
                             Ok(spec) => {
                                 println!("\n\x1b[32m{}\x1b[0m", t!("spectral-success"));
-                                let norm_xyz = spec.to_xyz();
-                                // White point: Ambient measuring usually wants D50 or D65 relative
+
+                                // Colorimetry
+                                let mut norm_xyz = spec.to_xyz();
+
+                                // Apply scaling for absolute modes (Emissive/Ambient)
+                                if mode != MeasurementMode::Reflective {
+                                    norm_xyz.x *= 0.00025;
+                                    norm_xyz.y *= 0.00025;
+                                    norm_xyz.z *= 0.00025;
+                                }
+
+                                // Reference White (D50)
                                 let wp = spectro_rs::colorimetry::XYZ {
                                     x: 96.42,
                                     y: 100.0,
@@ -100,9 +108,15 @@ fn main() -> Result<()> {
                                 };
                                 let lab = norm_xyz.to_lab(wp);
 
-                                if mode == MeasurementMode::Ambient {
+                                if mode == MeasurementMode::Emissive {
                                     println!(
-                                        "\x1b[36mAmbient Mode:\x1b[0m Lighting intensity detected."
+                                        "\x1b[36mMonitor Mode:\x1b[0m Screen brightness (nits): {:.2} cd/m²",
+                                        norm_xyz.y
+                                    );
+                                } else if mode == MeasurementMode::Ambient {
+                                    println!(
+                                        "\x1b[36mAmbient Mode:\x1b[0m Lighting intensity (relative): {:.2}",
+                                        norm_xyz.y
                                     );
                                 }
 
@@ -110,24 +124,42 @@ fn main() -> Result<()> {
                                     "\x1b[33mCIE XYZ:\x1b[0m X:{:.2}, Y:{:.2}, Z:{:.2}",
                                     norm_xyz.x, norm_xyz.y, norm_xyz.z
                                 );
-                                let (x, y) = norm_xyz.to_chromaticity();
-                                println!("\x1b[33mChromaticity:\x1b[0m x:{:.4}, y:{:.4}", x, y);
-
+                                let (x_coord, y_coord) = norm_xyz.to_chromaticity();
+                                println!(
+                                    "\x1b[33mChromaticity:\x1b[0m x:{:.4}, y:{:.4}",
+                                    x_coord, y_coord
+                                );
                                 println!(
                                     "\x1b[35mCIE L*a*b*:\x1b[0m L:{:.2}, a:{:.2}, b:{:.2}\n",
                                     lab.l, lab.a, lab.b
                                 );
 
-                                if mode == MeasurementMode::Ambient {
+                                // Advanced spectral analysis for light sources
+                                if mode != MeasurementMode::Reflective {
                                     let cct = norm_xyz.to_cct();
                                     println!("\x1b[36mEstimated CCT:\x1b[0m {:.0} K", cct);
 
-                                    // Robust Peak detection (skip noise below 420nm)
-                                    let peak_idx = spec
+                                    // Spectral Centroid (weighted average wavelength)
+                                    let total_power: f32 = spec.values.iter().skip(4).sum();
+                                    let centroid: f32 = spec
                                         .values
                                         .iter()
                                         .enumerate()
                                         .skip(4) // Start from 420nm
+                                        .map(|(i, v)| (380 + i * 10) as f32 * v)
+                                        .sum::<f32>()
+                                        / total_power.max(1e-6);
+                                    println!(
+                                        "\x1b[36mSpectral Centroid:\x1b[0m {:.1} nm",
+                                        centroid
+                                    );
+
+                                    // Peak detection (skip noise below 420nm)
+                                    let peak_idx = spec
+                                        .values
+                                        .iter()
+                                        .enumerate()
+                                        .skip(4)
                                         .max_by(|a, b| {
                                             a.1.partial_cmp(b.1)
                                                 .unwrap_or(std::cmp::Ordering::Equal)
@@ -138,6 +170,31 @@ fn main() -> Result<()> {
                                         "\x1b[36mPeak Wavelength:\x1b[0m {} nm",
                                         380 + peak_idx * 10
                                     );
+
+                                    // Simple ASCII spectrum visualization
+                                    println!("\n\x1b[90mSpectrum (420-730nm):\x1b[0m");
+                                    let max_val =
+                                        spec.values.iter().skip(4).cloned().fold(0.0f32, f32::max);
+                                    for (i, v) in spec.values.iter().enumerate().skip(4) {
+                                        let bar_len = ((v / max_val.max(1e-6)) * 30.0) as usize;
+                                        let wl = 380 + i * 10;
+                                        let color = match wl {
+                                            420..=450 => "\x1b[34m",       // Blue
+                                            451..=500 => "\x1b[36m",       // Cyan
+                                            501..=560 => "\x1b[32m",       // Green
+                                            561..=590 => "\x1b[33m",       // Yellow
+                                            591..=620 => "\x1b[38;5;208m", // Orange
+                                            _ => "\x1b[31m",               // Red
+                                        };
+                                        println!(
+                                            "{:3}nm {}{}█{}\x1b[0m",
+                                            wl,
+                                            "\x1b[90m",
+                                            color,
+                                            "█".repeat(bar_len.min(30))
+                                        );
+                                    }
+                                    println!();
                                 }
                             }
                             Err(e) => println!("Error: {}", e),
