@@ -173,6 +173,20 @@ pub struct Lab {
     pub b: f32,
 }
 
+/// Jzazbz: A modern perceptually uniform color space (Safdar et al., 2017).
+/// Designed for HDR content with excellent uniformity across the entire
+/// luminance range (0-10,000 nits). Euclidean distance in this space
+/// directly represents perceptual difference.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Jzazbz {
+    /// Lightness (0.0 = black, higher = brighter, no upper limit for HDR)
+    pub jz: f32,
+    /// Red-green opponent (negative = green, positive = red)
+    pub az: f32,
+    /// Blue-yellow opponent (negative = blue, positive = yellow)
+    pub bz: f32,
+}
+
 impl XYZ {
     /// Convert XYZ to CIE L*a*b* using the given white point.
     /// Uses precise CIE constants for continuity at the threshold.
@@ -202,6 +216,11 @@ impl XYZ {
 
     /// Convert XYZ (D65) to linear sRGB, then apply gamma correction.
     /// Returns clamped (r, g, b) values in [0, 255].
+    ///
+    /// **IMPORTANT**: This function assumes the input XYZ is referenced to D65.
+    /// If your XYZ values are based on a different illuminant (e.g., D50 from
+    /// an ICC profile), you must first use `chromatic_adaptation::bradford_adapt`
+    /// to convert to D65 before calling this method.
     #[allow(clippy::excessive_precision)]
     pub fn to_srgb(&self) -> (u8, u8, u8) {
         // XYZ to linear sRGB matrix (IEC 61966-2-1, D65 reference)
@@ -223,6 +242,57 @@ impl XYZ {
         let b = (gamma(b_lin).clamp(0.0, 1.0) * 255.0).round() as u8;
 
         (r, g, b)
+    }
+
+    /// Convert XYZ (absolute, D65) to Jzazbz color space.
+    /// Jzazbz (Safdar et al., 2017) is designed for HDR and provides
+    /// excellent perceptual uniformity across the full luminance range.
+    ///
+    /// Input XYZ should be in absolute units (cd/m² for Y).
+    /// For SDR content where Y is normalized to 1.0, results will be in
+    /// a lower Jz range but still perceptually meaningful.
+    #[allow(clippy::excessive_precision)]
+    pub fn to_jzazbz(&self) -> Jzazbz {
+        // Jzazbz constants
+        const B: f32 = 1.15;
+        const G: f32 = 0.66;
+        const C1: f32 = 0.8359375; // 3424/4096
+        const C2: f32 = 18.8515625; // 2413/128
+        const C3: f32 = 18.6875; // 2392/128
+        const N: f32 = 0.15930175781; // 2610/16384
+        const P: f32 = 134.034375; // 1.7*2523/32
+        const D: f32 = -0.56;
+        const D0: f32 = 1.6295499532821566e-11;
+
+        // Step 1: XYZ' (modified XYZ)
+        let xp = B * self.x - (B - 1.0) * self.z;
+        let yp = G * self.y - (G - 1.0) * self.x;
+
+        // Step 2: XYZ' to LMS
+        let l = 0.41478972 * xp + 0.579999 * yp + 0.0146480 * self.z;
+        let m = -0.2015100 * xp + 1.120649 * yp + 0.0531008 * self.z;
+        let s = -0.0166008 * xp + 0.264800 * yp + 0.6684799 * self.z;
+
+        // Step 3: PQ transfer function
+        let pq = |x: f32| -> f32 {
+            let x = (x / 10000.0).max(0.0);
+            let xn = x.powf(N);
+            ((C1 + C2 * xn) / (1.0 + C3 * xn)).powf(P)
+        };
+
+        let lp = pq(l);
+        let mp = pq(m);
+        let sp = pq(s);
+
+        // Step 4: Izazbz
+        let iz = 0.5 * (lp + mp);
+        let az = 3.524000 * lp - 4.066708 * mp + 0.542708 * sp;
+        let bz = 0.199076 * lp + 1.096799 * mp - 1.295875 * sp;
+
+        // Step 5: Jz
+        let jz = ((1.0 + D) * iz) / (1.0 + D * iz) - D0;
+
+        Jzazbz { jz, az, bz }
     }
 }
 
@@ -384,6 +454,42 @@ impl Lab {
             h + 360.0
         } else {
             h
+        }
+    }
+}
+
+impl Jzazbz {
+    /// Calculate Delta Ez (Jzazbz Euclidean distance).
+    /// Unlike CIEDE2000, this is a simple Euclidean distance that
+    /// directly represents perceptual difference due to Jzazbz's
+    /// excellent uniformity. Simpler and faster than Delta E 2000.
+    pub fn delta_ez(&self, other: &Jzazbz) -> f32 {
+        ((self.jz - other.jz).powi(2) + (self.az - other.az).powi(2) + (self.bz - other.bz).powi(2))
+            .sqrt()
+    }
+
+    /// Calculate chroma (Cz) in Jzazbz space.
+    pub fn chroma(&self) -> f32 {
+        (self.az.powi(2) + self.bz.powi(2)).sqrt()
+    }
+
+    /// Calculate hue angle (hz) in degrees [0, 360).
+    pub fn hue(&self) -> f32 {
+        let h = self.bz.atan2(self.az).to_degrees();
+        if h < 0.0 {
+            h + 360.0
+        } else {
+            h
+        }
+    }
+
+    /// Mix two Jzazbz colors by a given ratio.
+    pub fn mix(&self, other: &Jzazbz, ratio: f32) -> Jzazbz {
+        let ratio = ratio.clamp(0.0, 1.0);
+        Jzazbz {
+            jz: self.jz * (1.0 - ratio) + other.jz * ratio,
+            az: self.az * (1.0 - ratio) + other.az * ratio,
+            bz: self.bz * (1.0 - ratio) + other.bz * ratio,
         }
     }
 }
