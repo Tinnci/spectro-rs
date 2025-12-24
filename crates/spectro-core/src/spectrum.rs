@@ -8,7 +8,11 @@ pub struct SpectralData {
 }
 
 impl SpectralData {
-    pub fn new(values: Vec<f32>) -> Self {
+    pub fn new(mut values: Vec<f32>) -> Self {
+        // Pad with zeros if less than 41 points (common for 380-730nm devices like ColorMunki)
+        while values.len() < 41 {
+            values.push(0.0);
+        }
         Self {
             wavelengths: WAVELENGTHS.to_vec(),
             values,
@@ -26,13 +30,14 @@ impl SpectralData {
         let mut y = 0.0;
         let mut z = 0.0;
 
-        for i in 0..36 {
+        for i in 0..41 {
             x += self.values[i] * X_BAR_2[i];
             y += self.values[i] * Y_BAR_2[i];
             z += self.values[i] * Z_BAR_2[i];
         }
 
         // Normalization factor for Y=100.
+        // Sum(Y_BAR_2) * 10 (delta lambda) = 106.821
         let k = 100.0 / 10.6821;
 
         XYZ {
@@ -48,7 +53,7 @@ impl SpectralData {
         let mut y = 0.0;
         let mut z = 0.0;
 
-        for i in 0..36 {
+        for i in 0..41 {
             x += self.values[i] * X_BAR_10[i];
             y += self.values[i] * Y_BAR_10[i];
             z += self.values[i] * Z_BAR_10[i];
