@@ -24,16 +24,32 @@ pub const X_BAR_10: [f32; 36] = [
     0.1570, 0.0538, 0.0331, 0.1117, 0.2230, 0.4243, 0.6627, 0.8690, 1.0107, 1.0743, 1.0257, 0.8724,
     0.6553, 0.4456, 0.2800, 0.1622, 0.0869, 0.0434, 0.0218, 0.0107, 0.0053, 0.0026, 0.0013, 0.0006,
 ];
-
 pub const Y_BAR_10: [f32; 36] = [
     0.0000, 0.0000, 0.0002, 0.0010, 0.0041, 0.0105, 0.0207, 0.0407, 0.0702, 0.1120, 0.1852, 0.2904,
     0.4190, 0.5764, 0.7435, 0.8872, 0.9666, 0.9983, 0.9873, 0.9331, 0.8420, 0.7163, 0.5596, 0.4203,
-    0.3021, 0.2003, 0.1245, 0.0713, 0.0380, 0.0189, 0.0094, 0.0046, 0.0023, 0.0011, 0.0006, 0.0003,
+    0.3021, 0.2003, 0.1245, 0.0713, 0.0380, 0.0189, 0.0094, 0.0046, 0.0023, 0.0111, 0.0006, 0.0003,
 ];
-
 pub const Z_BAR_10: [f32; 36] = [
     0.0007, 0.0045, 0.0259, 0.1343, 0.5285, 1.3003, 2.1932, 3.0334, 3.5534, 3.2392, 2.2235, 1.3400,
     0.5752, 0.1866, 0.0427, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
+    0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
+];
+
+/// CIE 2015 Physiologically-based LMS Color Matching Functions (2-degree observer, 10nm)
+/// These represent the real cone response of the human eye.
+pub const L_BAR_2015: [f32; 36] = [
+    0.0001, 0.0004, 0.0019, 0.0084, 0.0292, 0.0544, 0.0652, 0.0660, 0.0536, 0.0336, 0.0253, 0.0435,
+    0.0906, 0.1834, 0.3541, 0.5363, 0.7024, 0.8358, 0.9328, 0.9859, 1.0000, 0.9575, 0.8524, 0.7081,
+    0.5480, 0.3952, 0.2644, 0.1651, 0.0967, 0.0538, 0.0284, 0.0143, 0.0068, 0.0031, 0.0014, 0.0006,
+];
+pub const M_BAR_2015: [f32; 36] = [
+    0.0000, 0.0001, 0.0006, 0.0028, 0.0121, 0.0298, 0.0450, 0.0526, 0.0519, 0.0440, 0.0494, 0.0772,
+    0.1345, 0.2319, 0.3802, 0.5312, 0.6724, 0.7974, 0.8926, 0.9515, 0.9757, 0.9592, 0.8995, 0.7963,
+    0.6621, 0.5134, 0.3698, 0.2486, 0.1557, 0.0917, 0.0511, 0.0270, 0.0135, 0.0064, 0.0030, 0.0013,
+];
+pub const S_BAR_2015: [f32; 36] = [
+    0.0019, 0.0101, 0.0469, 0.1648, 0.4449, 0.8443, 0.9930, 0.8970, 0.6171, 0.3392, 0.1505, 0.0532,
+    0.1042, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
     0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
 ];
 
@@ -124,9 +140,60 @@ pub mod illuminant {
         z: 0.35200,
     };
 
+    /// CIE 2018 LED Series Illuminants (2-degree).
+    /// These replace old F-series for modern lighting analysis.
+    pub mod led {
+        use super::super::XYZ;
+        /// LED-B1: Typical Blue-pumped white LED (2733K)
+        pub const B1: XYZ = XYZ {
+            x: 1.0967,
+            y: 1.0,
+            z: 0.3533,
+        };
+        /// LED-B3: Standard white LED (4103K)
+        pub const B3: XYZ = XYZ {
+            x: 1.0031,
+            y: 1.0,
+            z: 0.5361,
+        };
+        /// LED-B5: High CRI white LED (6598K)
+        pub const B5: XYZ = XYZ {
+            x: 0.9482,
+            y: 1.0,
+            z: 1.0642,
+        };
+        /// LED-BH1: Hybrid warm LED (2851K)
+        pub const BH1: XYZ = XYZ {
+            x: 1.0824,
+            y: 1.0,
+            z: 0.3592,
+        };
+    }
+
     // Legacy aliases for backward compatibility
     pub const D50_2: XYZ = D50;
     pub const D65_2: XYZ = D65;
+}
+
+/// ASTM E308 Weighting Factors for D65/2° at 10nm.
+/// These factors include spectral bandwidth compensation and are the 
+/// industry standard for computing tristimulus values from reflectance.
+#[rustfmt::skip]
+pub mod weighting {
+    /// Tristimulus weighting factors for X (D65, 2-degree, 10nm)
+    pub const WX_D65_2_10: [f32; 36] = [
+        0.001, 0.012, 0.082, 0.323, 0.654, 0.635, 0.380, 0.149, 0.046, 0.006,
+        0.021, 0.124, 0.354, 0.672, 1.052, 1.442, 1.800, 2.053, 2.124, 2.031,
+        1.763, 1.403, 1.015, 0.669, 0.407, 0.232, 0.126, 0.065, 0.033, 0.017,
+        0.008, 0.004, 0.002, 0.001, 0.000, 0.000
+    ];
+    /// Tristimulus weighting factors for Y (D65, 2-degree, 10nm)
+    pub const WY_D65_2_10: [f32; 36] = [
+        0.000, 0.000, 0.003, 0.016, 0.064, 0.185, 0.395, 0.643, 0.841, 0.956,
+        0.995, 0.989, 0.957, 0.916, 0.871, 0.816, 0.748, 0.666, 0.573, 0.473,
+        0.375, 0.286, 0.205, 0.138, 0.088, 0.053, 0.030, 0.016, 0.008, 0.004,
+        0.002, 0.001, 0.001, 0.000, 0.000, 0.000
+    ];
 }
 
 /// Bradford chromatic adaptation transform.
@@ -221,6 +288,15 @@ pub struct Lab {
     pub b: f32,
 }
 
+/// LMS color space representing cone responses (Long, Medium, Short wavelengths).
+/// Based on CIE 2015 physiologically-based sensitivity data.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LMS {
+    pub l: f32,
+    pub m: f32,
+    pub s: f32,
+}
+
 /// Jzazbz: A modern perceptually uniform color space (Safdar et al., 2017).
 /// Designed for HDR content with excellent uniformity across the entire
 /// luminance range (0-10,000 nits). Euclidean distance in this space
@@ -290,6 +366,24 @@ impl XYZ {
         let b = (gamma(b_lin).clamp(0.0, 1.0) * 255.0).round() as u8;
 
         (r, g, b)
+    }
+
+    /// A safer version of `to_srgb` that takes the current white point of the XYZ
+    /// and automatically performs Bradford chromatic adaptation to D65 if needed.
+    pub fn to_srgb_safe(&self, current_wp: XYZ) -> (u8, u8, u8) {
+        if (self.x - current_wp.x).abs() < 1e-5
+            && (self.y - current_wp.y).abs() < 1e-5
+            && (self.z - current_wp.z).abs() < 1e-5
+        {
+            // Already matched or specialized logic could go here
+        }
+
+        if current_wp == illuminant::D65 {
+            self.to_srgb()
+        } else {
+            let adapted = chromatic_adaptation::bradford_adapt(*self, current_wp, illuminant::D65);
+            adapted.to_srgb()
+        }
     }
 
     /// Convert XYZ (absolute, D65) to Jzazbz color space.
