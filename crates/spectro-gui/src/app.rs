@@ -33,6 +33,8 @@ pub struct SpectroApp {
     status_msg: String,
     last_result: Option<SpectralData>,
     is_busy: bool,
+    selected_mode: MeasurementMode,
+    is_calibrated: bool,
 }
 
 impl SpectroApp {
@@ -125,6 +127,8 @@ impl SpectroApp {
             status_msg: "Initializing...".into(),
             last_result: None,
             is_busy: false,
+            selected_mode: MeasurementMode::Reflective,
+            is_calibrated: false,
         }
     }
 }
@@ -136,6 +140,9 @@ impl eframe::App for SpectroApp {
             match update {
                 UIUpdate::Connected(info) => self.device_info = info,
                 UIUpdate::Status(msg) => {
+                    if msg.contains("Calibration successful") {
+                        self.is_calibrated = true;
+                    }
                     self.status_msg = msg;
                     self.is_busy = false;
                 }
@@ -165,21 +172,64 @@ impl eframe::App for SpectroApp {
         // --- Side Panel: Controls & Color Info ---
         egui::SidePanel::left("control_panel")
             .resizable(true)
-            .default_width(280.0)
+            .default_width(300.0)
             .show(ctx, |ui| {
                 ui.add_space(10.0);
-                ui.vertical_centered(|ui| {
-                    if ui.button("🚀 New Measurement").clicked() && !self.is_busy {
+
+                // --- Mode Selector ---
+                ui.heading("Measurement Mode");
+                egui::ComboBox::from_id_salt("mode_selector")
+                    .selected_text(match self.selected_mode {
+                        MeasurementMode::Reflective => "📄 Reflective (Paper)",
+                        MeasurementMode::Emissive => "🖥️ Emissive (Monitor)",
+                        MeasurementMode::Ambient => "💡 Ambient (Light)",
+                    })
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut self.selected_mode,
+                            MeasurementMode::Reflective,
+                            "📄 Reflective (Paper)",
+                        );
+                        ui.selectable_value(
+                            &mut self.selected_mode,
+                            MeasurementMode::Emissive,
+                            "🖥️ Emissive (Monitor)",
+                        );
+                        ui.selectable_value(
+                            &mut self.selected_mode,
+                            MeasurementMode::Ambient,
+                            "💡 Ambient (Light)",
+                        );
+                    });
+
+                ui.add_space(10.0);
+
+                // --- Action Buttons ---
+                ui.horizontal(|ui| {
+                    let measure_btn =
+                        ui.add_enabled(!self.is_busy, egui::Button::new("🚀 Measure"));
+                    if measure_btn.clicked() {
                         self.is_busy = true;
                         self.cmd_tx
-                            .send(DeviceCommand::Measure(MeasurementMode::Reflective))
+                            .send(DeviceCommand::Measure(self.selected_mode))
                             .ok();
                     }
-                    if ui.button("🎯 Calibrate Sensor").clicked() && !self.is_busy {
+
+                    let cal_btn = ui.add_enabled(!self.is_busy, egui::Button::new("🎯 Calibrate"));
+                    if cal_btn.clicked() {
                         self.is_busy = true;
                         self.cmd_tx.send(DeviceCommand::Calibrate).ok();
                     }
                 });
+
+                // --- Calibration Status ---
+                ui.add_space(5.0);
+                let (cal_color, cal_text) = if self.is_calibrated {
+                    (egui::Color32::from_rgb(50, 180, 50), "✓ Calibrated")
+                } else {
+                    (egui::Color32::from_rgb(180, 80, 50), "⚠ Needs Calibration")
+                };
+                ui.colored_label(cal_color, cal_text);
 
                 ui.separator();
                 ui.heading("Color Analysis");
@@ -188,8 +238,8 @@ impl eframe::App for SpectroApp {
                     let xyz = data.to_xyz();
                     let lab = xyz.to_lab(spectro_rs::colorimetry::illuminant::D65_2);
 
-                    // Color Swatch
-                    let (r, g, b) = (100, 100, 100); // TODO: Implement Lab to sRGB conversion
+                    // Color Swatch - now using real sRGB conversion!
+                    let (r, g, b) = lab.to_srgb();
                     let rect = ui
                         .allocate_exact_size(
                             egui::vec2(ui.available_width(), 100.0),

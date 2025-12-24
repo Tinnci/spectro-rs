@@ -42,15 +42,15 @@ pub mod illuminant {
     use super::XYZ;
     /// D50 White Point (2-degree, normalized Y=1.0)
     pub const D50_2: XYZ = XYZ {
-        x: 0.9642,
+        x: 0.96422,
         y: 1.0,
-        z: 0.8251,
+        z: 0.82521,
     };
     /// D65 White Point (2-degree, normalized Y=1.0)
     pub const D65_2: XYZ = XYZ {
-        x: 0.9504,
+        x: 0.95047,
         y: 1.0,
-        z: 1.0888,
+        z: 1.08883,
     };
 }
 
@@ -69,14 +69,20 @@ pub struct Lab {
 }
 
 impl XYZ {
+    /// Convert XYZ to CIE L*a*b* using the given white point.
+    /// Uses precise CIE constants for continuity at the threshold.
     pub fn to_lab(&self, wp: XYZ) -> Lab {
-        fn f(t: f32) -> f32 {
-            if t > 0.008856 {
+        // CIE standard constants for continuity
+        const EPSILON: f32 = 216.0 / 24389.0; // ≈ 0.008856
+        const KAPPA: f32 = 24389.0 / 27.0; // ≈ 903.2963
+
+        let f = |t: f32| -> f32 {
+            if t > EPSILON {
                 t.powf(1.0 / 3.0)
             } else {
-                7.787 * t + 16.0 / 116.0
+                (KAPPA * t + 16.0) / 116.0
             }
-        }
+        };
 
         let fx = f(self.x / wp.x);
         let fy = f(self.y / wp.y);
@@ -88,81 +94,166 @@ impl XYZ {
             b: 200.0 * (fy - fz),
         }
     }
+
+    /// Convert XYZ (D65) to linear sRGB, then apply gamma correction.
+    /// Returns clamped (r, g, b) values in [0, 255].
+    #[allow(clippy::excessive_precision)]
+    pub fn to_srgb(&self) -> (u8, u8, u8) {
+        // XYZ to linear sRGB matrix (IEC 61966-2-1, D65 reference)
+        let r_lin = 3.2404542 * self.x - 1.5371385 * self.y - 0.4985314 * self.z;
+        let g_lin = -0.9692660 * self.x + 1.8760108 * self.y + 0.0415560 * self.z;
+        let b_lin = 0.0556434 * self.x - 0.2040259 * self.y + 1.0572252 * self.z;
+
+        // Gamma correction (sRGB companding)
+        fn gamma(c: f32) -> f32 {
+            if c <= 0.0031308 {
+                12.92 * c
+            } else {
+                1.055 * c.powf(1.0 / 2.4) - 0.055
+            }
+        }
+
+        let r = (gamma(r_lin).clamp(0.0, 1.0) * 255.0).round() as u8;
+        let g = (gamma(g_lin).clamp(0.0, 1.0) * 255.0).round() as u8;
+        let b = (gamma(b_lin).clamp(0.0, 1.0) * 255.0).round() as u8;
+
+        (r, g, b)
+    }
 }
 
 impl Lab {
+    /// Convert Lab back to XYZ using the given white point.
+    /// Uses precise CIE constants for continuity at the threshold.
+    pub fn to_xyz(&self, wp: XYZ) -> XYZ {
+        // CIE standard constants for continuity
+        const EPSILON: f32 = 216.0 / 24389.0; // ≈ 0.008856
+        const KAPPA: f32 = 24389.0 / 27.0; // ≈ 903.2963
+
+        let fy = (self.l + 16.0) / 116.0;
+        let fx = self.a / 500.0 + fy;
+        let fz = fy - self.b / 200.0;
+
+        let f_inv = |t: f32| -> f32 {
+            let t3 = t.powi(3);
+            if t3 > EPSILON {
+                t3
+            } else {
+                (116.0 * t - 16.0) / KAPPA
+            }
+        };
+
+        XYZ {
+            x: wp.x * f_inv(fx),
+            y: wp.y * f_inv(fy),
+            z: wp.z * f_inv(fz),
+        }
+    }
+
+    /// Convert Lab to sRGB via XYZ (using D65 white point).
+    /// Returns clamped (r, g, b) values in [0, 255].
+    pub fn to_srgb(&self) -> (u8, u8, u8) {
+        self.to_xyz(illuminant::D65_2).to_srgb()
+    }
+
     /// Calculates Delta E*ab (CIE 1976).
     pub fn delta_e_76(&self, other: &Lab) -> f32 {
         ((self.l - other.l).powi(2) + (self.a - other.a).powi(2) + (self.b - other.b).powi(2))
             .sqrt()
     }
 
-    /// Calculates Delta E*00 (CIE 2000).
+    /// Calculates Delta E*00 (CIE 2000) using the Sharma (2005) reference implementation.
+    /// This is the industry standard for perceptual color difference.
     pub fn delta_e_2000(&self, other: &Lab) -> f32 {
-        let l1 = self.l;
-        let l2 = other.l;
-        let a1 = self.a;
-        let a2 = other.a;
-        let b1 = self.b;
-        let b2 = other.b;
+        // Weight factors (default = 1.0)
+        let k_l = 1.0;
+        let k_c = 1.0;
+        let k_h = 1.0;
 
-        let avg_l = (l1 + l2) / 2.0;
-        let c1 = (a1.powi(2) + b1.powi(2)).sqrt();
-        let c2 = (a2.powi(2) + b2.powi(2)).sqrt();
+        let c1 = (self.a.powi(2) + self.b.powi(2)).sqrt();
+        let c2 = (other.a.powi(2) + other.b.powi(2)).sqrt();
         let avg_c = (c1 + c2) / 2.0;
 
+        // Calculate G and adjusted a'
         let g = 0.5 * (1.0 - (avg_c.powi(7) / (avg_c.powi(7) + 25.0f32.powi(7))).sqrt());
-        let a1p = (1.0 + g) * a1;
-        let a2p = (1.0 + g) * a2;
-        let c1p = (a1p.powi(2) + b1.powi(2)).sqrt();
-        let c2p = (a2p.powi(2) + b2.powi(2)).sqrt();
+        let a1p = (1.0 + g) * self.a;
+        let a2p = (1.0 + g) * other.a;
+
+        let c1p = (a1p.powi(2) + self.b.powi(2)).sqrt();
+        let c2p = (a2p.powi(2) + other.b.powi(2)).sqrt();
+
+        // Key fix: atan2(b, a') - correct parameter order
+        let get_hp = |b: f32, ap: f32| -> f32 {
+            if b == 0.0 && ap == 0.0 {
+                0.0
+            } else {
+                let h = b.atan2(ap).to_degrees();
+                if h < 0.0 {
+                    h + 360.0
+                } else {
+                    h
+                }
+            }
+        };
+        let h1p = get_hp(self.b, a1p);
+        let h2p = get_hp(other.b, a2p);
+
+        // Calculate delta values
+        let d_lp = other.l - self.l;
+        let d_cp = c2p - c1p;
+
+        let mut d_hp_deg = h2p - h1p;
+        if c1p * c2p != 0.0 {
+            if d_hp_deg.abs() > 180.0 {
+                if h2p <= h1p {
+                    d_hp_deg += 360.0;
+                } else {
+                    d_hp_deg -= 360.0;
+                }
+            }
+        } else {
+            d_hp_deg = 0.0;
+        }
+        let d_hp = 2.0 * (c1p * c2p).sqrt() * (d_hp_deg / 2.0).to_radians().sin();
+
+        // Calculate averages
+        let avg_lp = (self.l + other.l) / 2.0;
         let avg_cp = (c1p + c2p) / 2.0;
 
-        let h1p = a1p.atan2(b1).to_degrees();
-        let h1p = if h1p < 0.0 { h1p + 360.0 } else { h1p };
-        let h2p = a2p.atan2(b2).to_degrees();
-        let h2p = if h2p < 0.0 { h2p + 360.0 } else { h2p };
-
-        let mut d_hp = h2p - h1p;
-        if d_hp.abs() > 180.0 {
-            if h2p <= h1p {
-                d_hp += 360.0;
-            } else {
-                d_hp -= 360.0;
-            }
-        }
-
-        let d_lp = l2 - l1;
-        let d_cp = c2p - c1p;
-        let d_hp = 2.0 * (c1p * c2p).sqrt() * (d_hp.to_radians() / 2.0).sin();
-
         let mut avg_hp = h1p + h2p;
-        if (h1p - h2p).abs() > 180.0 {
-            if avg_hp < 360.0 {
-                avg_hp += 360.0;
-            } else {
-                avg_hp -= 360.0;
+        if c1p * c2p != 0.0 {
+            if (h1p - h2p).abs() > 180.0 {
+                if h1p + h2p < 360.0 {
+                    avg_hp += 360.0;
+                } else {
+                    avg_hp -= 360.0;
+                }
             }
+            avg_hp /= 2.0;
+        } else {
+            avg_hp = h1p + h2p;
         }
-        avg_hp /= 2.0;
 
+        // T term
         let t = 1.0 - 0.17 * (avg_hp - 30.0).to_radians().cos()
             + 0.24 * (2.0 * avg_hp).to_radians().cos()
             + 0.32 * (3.0 * avg_hp + 6.0).to_radians().cos()
             - 0.20 * (4.0 * avg_hp - 63.0).to_radians().cos();
 
-        let sl = 1.0 + (0.015 * (avg_l - 50.0).powi(2)) / (20.0 + (avg_l - 50.0).powi(2)).sqrt();
-        let sc = 1.0 + 0.045 * avg_cp;
-        let sh = 1.0 + 0.015 * avg_cp * t;
+        // Key fix: SL denominator structure
+        let s_l = 1.0 + (0.015 * (avg_lp - 50.0).powi(2)) / (20.0 + (avg_lp - 50.0).powi(2)).sqrt();
+        let s_c = 1.0 + 0.045 * avg_cp;
+        let s_h = 1.0 + 0.015 * avg_cp * t;
 
+        // Rotation term RT
         let d_theta = 30.0 * (-((avg_hp - 275.0) / 25.0).powi(2)).exp();
         let rc = 2.0 * (avg_cp.powi(7) / (avg_cp.powi(7) + 25.0f32.powi(7))).sqrt();
         let rt = -rc * (2.0 * d_theta.to_radians()).sin();
 
-        ((d_lp / sl).powi(2)
-            + (d_cp / sc).powi(2)
-            + (d_hp / sh).powi(2)
-            + rt * (d_cp / sc) * (d_hp / sh))
+        // Final Delta E 00
+        ((d_lp / (k_l * s_l)).powi(2)
+            + (d_cp / (k_c * s_c)).powi(2)
+            + (d_hp / (k_h * s_h)).powi(2)
+            + rt * (d_cp / (k_c * s_c)) * (d_hp / (k_h * s_h)))
             .sqrt()
     }
 }
