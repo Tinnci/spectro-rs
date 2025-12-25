@@ -1,3 +1,5 @@
+use crate::{Illuminant, Observer};
+
 /// CIE 1931 2-degree Standard Observer CMFs (380-780nm, 10nm steps)
 pub const X_BAR_2: [f32; 41] = [
     0.0014, 0.0042, 0.0143, 0.0435, 0.1344, 0.2839, 0.3483, 0.3362, 0.2908, 0.1954, 0.0956, 0.0320,
@@ -180,8 +182,45 @@ pub mod illuminant {
     }
 
     // Legacy aliases for backward compatibility
-    pub const D50_2: XYZ = D50;
+    pub const D55_2: XYZ = D55;
     pub const D65_2: XYZ = D65;
+}
+
+impl Illuminant {
+    pub fn get_white_point(&self, observer: Observer) -> XYZ {
+        match observer {
+            Observer::CIE1931_2 => match self {
+                Illuminant::D50 => illuminant::D50,
+                Illuminant::D55 => illuminant::D55,
+                Illuminant::D65 => illuminant::D65,
+                Illuminant::D75 => illuminant::D75,
+                Illuminant::A => illuminant::A,
+                Illuminant::F2 => illuminant::F2,
+                Illuminant::F7 => illuminant::F7,
+                Illuminant::F11 => illuminant::F11,
+            },
+            Observer::CIE1964_10 => match self {
+                Illuminant::D50 => illuminant::D50_10,
+                Illuminant::D55 => illuminant::D55_10,
+                Illuminant::D65 => illuminant::D65_10,
+                Illuminant::D75 => illuminant::D75_10,
+                Illuminant::A => illuminant::A_10,
+                // Fallback to 2-degree if 10-degree constants are missing
+                Illuminant::F2 => illuminant::F2,
+                Illuminant::F7 => illuminant::F7,
+                Illuminant::F11 => illuminant::F11,
+            },
+        }
+    }
+}
+
+impl Observer {
+    pub fn get_cmfs(&self) -> (&'static [f32; 41], &'static [f32; 41], &'static [f32; 41]) {
+        match self {
+            Observer::CIE1931_2 => (&X_BAR_2, &Y_BAR_2, &Z_BAR_2),
+            Observer::CIE1964_10 => (&X_BAR_10, &Y_BAR_10, &Z_BAR_10),
+        }
+    }
 }
 
 /// ASTM E308 Weighting Factors for D65/2° at 10nm.
@@ -219,6 +258,39 @@ pub mod weighting {
     /// Sum of WY_D65_2_10 weights. 
     /// Corrected to 100.0 to simplify normalization logic.
     pub const SUM_WY_D65_2_10: f32 = 100.000;
+
+    // ==================== D50 (Print Industry Standard) ====================
+    
+    /// Tristimulus weighting factors for X (D50, 2-degree, 10nm, 380-780nm)
+    /// Target White Point: X=96.42, Y=100.00, Z=82.52 (CIE 15:2004)
+    pub const WX_D50_2_10: [f32; 41] = [
+        0.003, 0.012, 0.067, 0.235, 0.770, 1.566, 2.483, 2.794, 2.510, 1.700, 
+        0.866, 0.280, 0.045, 0.086, 0.585, 1.608, 2.785, 4.221, 5.659, 7.090, 
+        8.627, 9.137, 9.882, 9.480, 8.042, 5.858, 4.219, 2.585, 1.543, 0.858, 
+        0.442, 0.189, 0.100, 0.051, 0.021, 0.012, 0.006, 0.002, 0.001, 0.001, 
+        0.000
+    ];
+
+    /// Tristimulus weighting factors for Y (D50, 2-degree, 10nm, 380-780nm)
+    pub const WY_D50_2_10: [f32; 41] = [
+        0.000, 0.000, 0.002, 0.006, 0.023, 0.064, 0.164, 0.316, 0.518, 0.792, 
+        1.259, 1.821, 2.943, 4.626, 6.563, 8.376, 9.148, 9.688, 9.469, 8.854, 
+        8.190, 6.738, 5.869, 4.755, 3.594, 2.416, 1.648, 0.975, 0.571, 0.314, 
+        0.161, 0.068, 0.036, 0.019, 0.007, 0.004, 0.002, 0.001, 0.001, 0.000, 
+        0.000
+    ];
+
+    /// Tristimulus weighting factors for Z (D50, 2-degree, 10nm, 380-780nm)
+    pub const WZ_D50_2_10: [f32; 41] = [
+        0.018, 0.067, 0.373, 1.306, 4.318, 8.921, 14.544, 17.196, 15.915, 11.320, 
+        6.028, 2.014, 0.442, 0.056, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 
+        0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 
+        0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 
+        0.000
+    ];
+
+    /// Sum of WY_D50_2_10 weights.
+    pub const SUM_WY_D50_2_10: f32 = 100.000;
 }
 
 /// Bradford chromatic adaptation transform.

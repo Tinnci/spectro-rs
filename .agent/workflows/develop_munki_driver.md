@@ -53,6 +53,8 @@ This workflow outlines the steps to develop a Rust-based driver for the X-Rite C
 - [x] Graceful device disconnect handling with reconnect.
 - [x] Export CSV/JSON for measurement history.
 - [x] CIE 1931 xy chromaticity diagram.
+- [x] Algorithm configuration (Illuminant: D65, D50, A, F-series; Observer: 2°, 10°).
+- [x] ASTM E308 weighting factors for D50/2° (print industry standard).
 - [ ] ICC Profile support for CMYK conversion.
 
 ## 7. Infrastructure

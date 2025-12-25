@@ -1,5 +1,6 @@
 use crate::colorimetry::{weighting, XYZ, X_BAR_10, X_BAR_2, Y_BAR_10, Y_BAR_2, Z_BAR_10, Z_BAR_2};
 use crate::WAVELENGTHS;
+use crate::{Illuminant, Observer};
 
 /// Measurement mode determines the calculation method for XYZ conversion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
@@ -51,12 +52,92 @@ impl SpectralData {
         self.mode = mode;
     }
 
-    /// Convert to XYZ using the standard 2-degree observer.
-    /// The calculation method depends on the measurement mode.
+    /// Convert to XYZ using the standard 2-degree observer and D65.
+    /// Default method for backward compatibility.
     pub fn to_xyz(&self) -> XYZ {
+        self.to_xyz_ext(Illuminant::D65, Observer::CIE1931_2)
+    }
+
+    /// Convert to XYZ using specified illuminant and observer.
+    ///
+    /// For reflective measurements, uses ASTM E308 weighting factors when available.
+    /// Currently supported: D65/2°, D50/2°.
+    pub fn to_xyz_ext(&self, source: Illuminant, obs: Observer) -> XYZ {
         match self.mode {
-            MeasurementMode::Reflective => self.to_xyz_reflective_2(),
-            MeasurementMode::Emissive => self.to_xyz_emissive_2(),
+            MeasurementMode::Reflective => {
+                match (source, obs) {
+                    (Illuminant::D65, Observer::CIE1931_2) => self.to_xyz_reflective_weighted(
+                        &weighting::WX_D65_2_10,
+                        &weighting::WY_D65_2_10,
+                        &weighting::WZ_D65_2_10,
+                        weighting::SUM_WY_D65_2_10,
+                    ),
+                    (Illuminant::D50, Observer::CIE1931_2) => self.to_xyz_reflective_weighted(
+                        &weighting::WX_D50_2_10,
+                        &weighting::WY_D50_2_10,
+                        &weighting::WZ_D50_2_10,
+                        weighting::SUM_WY_D50_2_10,
+                    ),
+                    // For other combinations, fallback to D65/2° with a note
+                    _ => self.to_xyz_reflective_weighted(
+                        &weighting::WX_D65_2_10,
+                        &weighting::WY_D65_2_10,
+                        &weighting::WZ_D65_2_10,
+                        weighting::SUM_WY_D65_2_10,
+                    ),
+                }
+            }
+            MeasurementMode::Emissive => self.to_xyz_emissive_ext(obs),
+        }
+    }
+
+    /// Convert reflectance to XYZ using provided weighting factors.
+    fn to_xyz_reflective_weighted(
+        &self,
+        wx: &[f32; 41],
+        wy: &[f32; 41],
+        wz: &[f32; 41],
+        sum_wy: f32,
+    ) -> XYZ {
+        let mut x = 0.0f32;
+        let mut y = 0.0f32;
+        let mut z = 0.0f32;
+
+        for i in 0..41 {
+            x += self.values[i] * wx[i];
+            y += self.values[i] * wy[i];
+            z += self.values[i] * wz[i];
+        }
+
+        // Normalize so that Y=100 for a perfect white diffuser
+        let scale = 100.0 / sum_wy;
+
+        XYZ {
+            x: x * scale,
+            y: y * scale,
+            z: z * scale,
+        }
+    }
+
+    /// Convert spectral power distribution to XYZ with specified observer.
+    pub fn to_xyz_emissive_ext(&self, obs: Observer) -> XYZ {
+        const STEP: f32 = 10.0;
+        let (xb, yb, zb) = obs.get_cmfs();
+
+        let mut x = 0.0f32;
+        let mut y = 0.0f32;
+        let mut z = 0.0f32;
+
+        for i in 0..41 {
+            x += self.values[i] * xb[i];
+            y += self.values[i] * yb[i];
+            z += self.values[i] * zb[i];
+        }
+
+        XYZ {
+            x: x * STEP,
+            y: y * STEP,
+            z: z * STEP,
         }
     }
 

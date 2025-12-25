@@ -126,6 +126,28 @@ pub enum MeasurementMode {
     Ambient,
 }
 
+/// Standard CIE Illuminants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum Illuminant {
+    D50,
+    D55,
+    D65,
+    D75,
+    A,
+    F2,
+    F7,
+    F11,
+}
+
+/// Standard CIE Observers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum Observer {
+    /// CIE 1931 2° Standard Observer (Small field of view)
+    CIE1931_2,
+    /// CIE 1964 10° Supplementary Standard Observer (Large field of view > 4°)
+    CIE1964_10,
+}
+
 // ============================================================================
 // Discovery API
 // ============================================================================

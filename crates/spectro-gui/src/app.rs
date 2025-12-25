@@ -11,7 +11,7 @@ use eframe::egui;
 use egui_plot::{HLine, Legend, Line, Plot, PlotPoints, Points, VLine};
 use spectro_rs::{
     colorimetry::{illuminant, Lab, XYZ, X_BAR_2, Y_BAR_2, Z_BAR_2},
-    discover, BoxedSpectrometer, DeviceInfo, MeasurementMode, SpectralData,
+    discover, BoxedSpectrometer, DeviceInfo, Illuminant, MeasurementMode, Observer, SpectralData,
 };
 use std::thread;
 
@@ -102,6 +102,10 @@ pub struct SpectroApp {
     is_expert_mode: bool,
     expert_tab: ExpertTab,
     show_reference_input: bool,
+
+    // Algorithm calculation settings
+    selected_illuminant: Illuminant,
+    selected_observer: Observer,
 }
 
 /// Tabs in the Expert panel
@@ -265,6 +269,8 @@ impl SpectroApp {
             is_expert_mode: false,
             expert_tab: ExpertTab::DeviceInfo,
             show_reference_input: false,
+            selected_illuminant: Illuminant::D65,
+            selected_observer: Observer::CIE1931_2,
         }
     }
 
@@ -274,13 +280,16 @@ impl SpectroApp {
 
     fn get_current_lab(&self) -> Option<Lab> {
         self.last_result.as_ref().map(|data| {
-            let xyz = data.to_xyz();
+            let xyz = data.to_xyz_ext(self.selected_illuminant, self.selected_observer);
             let xyz_normalized = XYZ {
                 x: xyz.x / 100.0,
                 y: xyz.y / 100.0,
                 z: xyz.z / 100.0,
             };
-            xyz_normalized.to_lab(illuminant::D65_2)
+            xyz_normalized.to_lab(
+                self.selected_illuminant
+                    .get_white_point(self.selected_observer),
+            )
         })
     }
 
@@ -300,13 +309,16 @@ impl SpectroApp {
 
     fn add_to_history(&mut self, data: SpectralData) {
         let lab = {
-            let xyz = data.to_xyz();
+            let xyz = data.to_xyz_ext(self.selected_illuminant, self.selected_observer);
             let xyz_normalized = XYZ {
                 x: xyz.x / 100.0,
                 y: xyz.y / 100.0,
                 z: xyz.z / 100.0,
             };
-            xyz_normalized.to_lab(illuminant::D65_2)
+            xyz_normalized.to_lab(
+                self.selected_illuminant
+                    .get_white_point(self.selected_observer),
+            )
         };
         let delta_e = self
             .reference_lab
@@ -1285,6 +1297,61 @@ impl eframe::App for SpectroApp {
                                 &mut self.selected_mode,
                                 MeasurementMode::Ambient,
                                 "💡 Ambient (Light)",
+                            );
+                        });
+
+                    // Illuminant selector
+                    egui::ComboBox::from_id_salt("illuminant_selector")
+                        .selected_text(format!("{:?}", self.selected_illuminant))
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut self.selected_illuminant,
+                                Illuminant::D65,
+                                "D65 (Daylight, sRGB)",
+                            );
+                            ui.selectable_value(
+                                &mut self.selected_illuminant,
+                                Illuminant::D50,
+                                "D50 (Print Industry)",
+                            );
+                            ui.selectable_value(
+                                &mut self.selected_illuminant,
+                                Illuminant::A,
+                                "A (Tungsten 2856K)",
+                            );
+                            ui.selectable_value(
+                                &mut self.selected_illuminant,
+                                Illuminant::F2,
+                                "F2 (Cool White Fluorescent)",
+                            );
+                            ui.selectable_value(
+                                &mut self.selected_illuminant,
+                                Illuminant::F7,
+                                "F7 (Daylight Fluorescent)",
+                            );
+                            ui.selectable_value(
+                                &mut self.selected_illuminant,
+                                Illuminant::F11,
+                                "F11 (TL84)",
+                            );
+                        });
+
+                    // Observer selector
+                    egui::ComboBox::from_id_salt("observer_selector")
+                        .selected_text(match self.selected_observer {
+                            Observer::CIE1931_2 => "2° (Standard)",
+                            Observer::CIE1964_10 => "10° (Supplementary)",
+                        })
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut self.selected_observer,
+                                Observer::CIE1931_2,
+                                "2° (CIE 1931 Standard)",
+                            );
+                            ui.selectable_value(
+                                &mut self.selected_observer,
+                                Observer::CIE1964_10,
+                                "10° (CIE 1964 Large Field)",
                             );
                         });
 
