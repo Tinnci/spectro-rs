@@ -130,16 +130,102 @@ pub fn contrast_fill_color(visuals: &Visuals) -> Color32 {
     }
 }
 
-/// Theme configuration with persistence
+/// Get panel background color with proper contrast
+pub fn panel_bg_color(visuals: &Visuals) -> Color32 {
+    if visuals.dark_mode {
+        Color32::from_rgb(22, 22, 30)
+    } else {
+        Color32::from_rgb(245, 245, 248)
+    }
+}
+
+/// Get secondary/darker panel background color
+pub fn panel_bg_dark_color(visuals: &Visuals) -> Color32 {
+    if visuals.dark_mode {
+        Color32::from_rgb(18, 18, 24)
+    } else {
+        Color32::from_rgb(235, 235, 240)
+    }
+}
+
+/// Get info panel background color (for metric displays)
+pub fn info_panel_color(visuals: &Visuals) -> Color32 {
+    if visuals.dark_mode {
+        Color32::from_rgb(28, 28, 36)
+    } else {
+        Color32::from_rgb(250, 250, 252)
+    }
+}
+
+/// Get border/stroke color for UI elements
+pub fn border_color(visuals: &Visuals) -> Color32 {
+    if visuals.dark_mode {
+        Color32::from_rgb(60, 60, 80)
+    } else {
+        Color32::from_rgb(180, 180, 190)
+    }
+}
+
+/// Get muted/secondary text color
+pub fn muted_text_color(visuals: &Visuals) -> Color32 {
+    if visuals.dark_mode {
+        Color32::GRAY
+    } else {
+        Color32::from_rgb(100, 100, 110)
+    }
+}
+
+/// Get error/danger color
+pub fn error_color(visuals: &Visuals) -> Color32 {
+    if visuals.dark_mode {
+        Color32::from_rgb(255, 100, 100)
+    } else {
+        Color32::from_rgb(200, 50, 50)
+    }
+}
+
+/// Get warning color (yellow/amber)
+pub fn warning_color(visuals: &Visuals) -> Color32 {
+    if visuals.dark_mode {
+        Color32::YELLOW
+    } else {
+        Color32::from_rgb(180, 130, 0)
+    }
+}
+
+/// Get connected indicator color (green dot)
+#[allow(dead_code)]
+pub fn connected_color(_visuals: &Visuals) -> Color32 {
+    Color32::from_rgb(50, 205, 50) // Lime green visible on both
+}
+
+/// Get disconnected indicator color (red dot)
+pub fn disconnected_color(_visuals: &Visuals) -> Color32 {
+    Color32::from_rgb(255, 100, 100)
+}
+
+/// Get color for overlay shadows (dark mode uses black, light mode uses subtle gray)
+pub fn overlay_shadow_color(visuals: &Visuals) -> Color32 {
+    if visuals.dark_mode {
+        Color32::from_rgba_unmultiplied(0, 0, 0, 80)
+    } else {
+        Color32::from_rgba_unmultiplied(0, 0, 0, 30)
+    }
+}
+
+/// Theme configuration with persistence (now also includes language)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThemeConfig {
     pub mode: ThemeMode,
+    #[serde(default)]
+    pub language: crate::i18n::Language,
 }
 
 impl Default for ThemeConfig {
     fn default() -> Self {
         ThemeConfig {
             mode: ThemeMode::Dark,
+            language: crate::i18n::Language::Auto,
         }
     }
 }
@@ -183,6 +269,7 @@ mod tests {
     fn test_theme_persistence() {
         let config = ThemeConfig {
             mode: ThemeMode::Light,
+            language: crate::i18n::Language::Auto,
         };
 
         let json = serde_json::to_string(&config).unwrap();

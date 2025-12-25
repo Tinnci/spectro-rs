@@ -1,6 +1,11 @@
 use eframe::egui;
 use spectro_rs::tm30::TM30Metrics;
 
+use crate::t;
+use crate::theme::{
+    contrast_fill_color, error_color, muted_text_color, plot_line_color, success_color,
+};
+
 pub struct Tm30Visualizer {
     pub metrics: TM30Metrics,
 }
@@ -12,7 +17,7 @@ impl Tm30Visualizer {
 
     pub fn ui(&self, ui: &mut egui::Ui) {
         ui.vertical(|ui| {
-            ui.heading("TM-30-18 Color Vector Graphic");
+            ui.heading(t!("gui-tm30-vector"));
 
             let (rect, _response) =
                 ui.allocate_at_least(egui::vec2(300.0, 300.0), egui::Sense::hover());
@@ -65,7 +70,10 @@ impl Tm30Visualizer {
             for i in 0..16 {
                 let p1 = ref_points[i];
                 let p2 = ref_points[(i + 1) % 16];
-                painter.line_segment([p1, p2], egui::Stroke::new(2.0, egui::Color32::BLACK));
+                painter.line_segment(
+                    [p1, p2],
+                    egui::Stroke::new(2.0, plot_line_color(&ui.ctx().style().visuals)),
+                );
             }
 
             // Draw test polygon
@@ -93,7 +101,7 @@ impl Tm30Visualizer {
                 let p_test = test_points[i];
                 painter.line_segment(
                     [p_ref, p_test],
-                    egui::Stroke::new(1.0, egui::Color32::WHITE),
+                    egui::Stroke::new(1.0, contrast_fill_color(&ui.ctx().style().visuals)),
                 );
             }
 
@@ -106,7 +114,7 @@ impl Tm30Visualizer {
                     egui::Align2::CENTER_CENTER,
                     (i + 1).to_string(),
                     egui::FontId::proportional(10.0),
-                    egui::Color32::from_gray(180),
+                    muted_text_color(&ui.ctx().style().visuals),
                 );
             }
 
@@ -115,13 +123,13 @@ impl Tm30Visualizer {
                 ui.label(
                     egui::RichText::new(format!("Rf: {:.1}", self.metrics.rf))
                         .strong()
-                        .color(egui::Color32::WHITE),
+                        .color(contrast_fill_color(&ui.ctx().style().visuals)),
                 );
                 ui.add_space(20.0);
                 ui.label(
                     egui::RichText::new(format!("Rg: {:.1}", self.metrics.rg))
                         .strong()
-                        .color(egui::Color32::WHITE),
+                        .color(contrast_fill_color(&ui.ctx().style().visuals)),
                 );
             });
             ui.label(format!(
@@ -130,7 +138,7 @@ impl Tm30Visualizer {
             ));
 
             ui.add_space(20.0);
-            ui.heading("99 Color Evaluation Samples (CES)");
+            ui.heading(t!("gui-tm30-ces"));
             ui.add_space(5.0);
 
             egui::ScrollArea::vertical()
@@ -151,7 +159,7 @@ impl Tm30Visualizer {
                 });
 
             ui.add_space(20.0);
-            ui.heading("Hue Bin Details");
+            ui.heading(t!("gui-tm30-hue-bin"));
             ui.add_space(5.0);
 
             egui::Grid::new("tm30_bin_grid")
@@ -159,10 +167,10 @@ impl Tm30Visualizer {
                 .num_columns(4)
                 .spacing([20.0, 4.0])
                 .show(ui, |ui| {
-                    ui.label("Bin");
-                    ui.label("Rf");
-                    ui.label("Chroma Shift");
-                    ui.label("Hue Shift");
+                    ui.label(t!("gui-tm30-bin"));
+                    ui.label(t!("gui-tm30-rf"));
+                    ui.label(t!("gui-tm30-chroma-shift"));
+                    ui.label(t!("gui-tm30-hue-shift"));
                     ui.end_row();
 
                     for i in 0..16 {
@@ -171,9 +179,9 @@ impl Tm30Visualizer {
 
                         let chroma_shift = self.metrics.bin_chroma_shift[i] * 100.0;
                         let chroma_color = if chroma_shift > 0.0 {
-                            egui::Color32::from_rgb(100, 255, 100)
+                            success_color(&ui.ctx().style().visuals)
                         } else {
-                            egui::Color32::from_rgb(255, 100, 100)
+                            error_color(&ui.ctx().style().visuals)
                         };
                         ui.colored_label(chroma_color, format!("{:.1}%", chroma_shift));
 

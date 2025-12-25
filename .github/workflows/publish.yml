@@ -6,6 +6,9 @@ on:
       - 'spectro-rs-v*'
       - 'spectro-gui-v*'
 
+permissions:
+  contents: write
+
 jobs:
   publish-spectro-rs:
     name: Publish spectro-rs

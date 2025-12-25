@@ -7,7 +7,10 @@ use crossbeam_channel::Sender;
 use eframe::egui;
 
 use crate::shared::DeviceCommand;
-use crate::theme::success_color;
+use crate::t;
+use crate::theme::{
+    border_color, contrast_fill_color, error_color, muted_text_color, success_color, warning_color,
+};
 
 // ============================================================================
 // Calibration State
@@ -84,7 +87,7 @@ impl CalibrationWizard {
             return;
         }
 
-        egui::Window::new("🎯 Instrument Calibration")
+        egui::Window::new(t!("gui-cal-title"))
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
@@ -120,7 +123,7 @@ impl CalibrationWizard {
                     // Cancel button (available in all steps except Complete)
                     if self.step != CalibrationStep::Complete
                         && self.step != CalibrationStep::Calibrating
-                        && ui.button("Cancel").clicked()
+                        && ui.button(t!("gui-cancel")).clicked()
                     {
                         self.close();
                     }
@@ -138,11 +141,11 @@ impl CalibrationWizard {
                 let is_done = i < current_idx;
 
                 let color = if is_active {
-                    egui::Color32::WHITE
+                    contrast_fill_color(&ui.ctx().style().visuals)
                 } else if is_done {
                     success_color(&ui.ctx().style().visuals)
                 } else {
-                    egui::Color32::GRAY
+                    muted_text_color(&ui.ctx().style().visuals)
                 };
 
                 let text = if is_done {
@@ -153,7 +156,10 @@ impl CalibrationWizard {
 
                 ui.label(egui::RichText::new(text).color(color).strong());
                 if i < steps.len() - 1 {
-                    ui.label(egui::RichText::new(" → ").color(egui::Color32::DARK_GRAY));
+                    ui.label(
+                        egui::RichText::new(" → ")
+                            .color(muted_text_color(&ui.ctx().style().visuals)),
+                    );
                 }
             }
         });
@@ -178,7 +184,7 @@ impl CalibrationWizard {
         ui.label("Rotate dial to the");
         ui.label(
             egui::RichText::new("CALIBRATION POSITION")
-                .color(egui::Color32::YELLOW)
+                .color(warning_color(&ui.ctx().style().visuals))
                 .strong(),
         );
         ui.label("(Look for the small PILL/RECTANGLE icon)");
@@ -197,7 +203,9 @@ impl CalibrationWizard {
 
             // Quick/Force Calibrate
             if ui
-                .button(egui::RichText::new("⚡ Quick Calibrate").color(egui::Color32::LIGHT_BLUE))
+                .button(
+                    egui::RichText::new(t!("gui-quick-calibrate")).color(egui::Color32::LIGHT_BLUE),
+                )
                 .clicked()
             {
                 *is_busy = true;
@@ -231,23 +239,27 @@ impl CalibrationWizard {
 
         // Draw white tile representation
         let tile_rect = egui::Rect::from_center_size(rect.center(), egui::vec2(120.0, 80.0));
-        painter.rect_filled(tile_rect, 8.0, egui::Color32::WHITE);
-        painter.rect_stroke(tile_rect, 8.0, egui::Stroke::new(2.0, egui::Color32::GRAY));
+        painter.rect_filled(tile_rect, 8.0, egui::Color32::WHITE); // White tile is always white
+        painter.rect_stroke(
+            tile_rect,
+            8.0,
+            egui::Stroke::new(2.0, muted_text_color(&ui.ctx().style().visuals)),
+        );
 
         // Draw device representation (circle on top)
         let device_pos = tile_rect.center() - egui::vec2(0.0, 10.0);
-        painter.circle_filled(device_pos, 25.0, egui::Color32::from_rgb(60, 60, 80));
+        painter.circle_filled(device_pos, 25.0, border_color(&ui.ctx().style().visuals));
         painter.circle_stroke(
             device_pos,
             25.0,
-            egui::Stroke::new(2.0, egui::Color32::from_rgb(100, 100, 120)),
+            egui::Stroke::new(2.0, muted_text_color(&ui.ctx().style().visuals)),
         );
 
         ui.add_space(20.0);
         ui.label("Place the ColorMunki on the");
         ui.label(
             egui::RichText::new("WHITE CALIBRATION TILE")
-                .color(egui::Color32::WHITE)
+                .color(contrast_fill_color(&ui.ctx().style().visuals))
                 .strong(),
         );
         ui.label("(Included with your device)");
@@ -285,7 +297,7 @@ impl CalibrationWizard {
 
         // Check for error state
         if status_msg.contains("❌") || status_msg.contains("failed") {
-            ui.colored_label(egui::Color32::RED, "⚠️ Calibration Failed");
+            ui.colored_label(error_color(&ui.ctx().style().visuals), t!("gui-cal-failed"));
             ui.add_space(10.0);
             ui.label(status_msg);
             ui.add_space(20.0);
@@ -305,7 +317,7 @@ impl CalibrationWizard {
             ui.label(
                 egui::RichText::new("Do not move the device")
                     .italics()
-                    .color(egui::Color32::YELLOW),
+                    .color(warning_color(&ui.ctx().style().visuals)),
             );
         }
     }
@@ -451,8 +463,12 @@ impl CalibrationWizard {
         }
 
         // Draw center pivot
-        painter.circle_filled(center, 4.0, egui::Color32::WHITE);
-        painter.circle_stroke(center, 4.0, egui::Stroke::new(1.0, egui::Color32::GRAY));
+        painter.circle_filled(center, 4.0, contrast_fill_color(&ui.ctx().style().visuals));
+        painter.circle_stroke(
+            center,
+            4.0,
+            egui::Stroke::new(1.0, muted_text_color(&ui.ctx().style().visuals)),
+        );
     }
 
     /// Render a small dial check reminder for measurement modes.

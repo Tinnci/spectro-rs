@@ -20,7 +20,12 @@ use std::time::{Duration, Instant};
 
 use crate::calibration::CalibrationWizard;
 use crate::shared::{DeviceCommand, ExtendedDeviceInfo, MeasurementEntry, UIUpdate};
-use crate::theme::{success_color, ThemeConfig};
+use crate::t;
+use crate::theme::{
+    border_color, disconnected_color, error_color, info_panel_color, muted_text_color,
+    overlay_shadow_color, panel_bg_color, panel_bg_dark_color, plot_line_color, success_color,
+    warning_color, ThemeConfig,
+};
 
 // ============================================================================
 // Application State
@@ -475,7 +480,7 @@ impl SpectroApp {
                 painter.rect_filled(
                     rect.translate(egui::vec2(4.0, 4.0)),
                     16.0,
-                    egui::Color32::from_rgba_unmultiplied(0, 0, 0, 80),
+                    overlay_shadow_color(&ui.ctx().style().visuals),
                 );
 
                 // Main swatch
@@ -485,7 +490,7 @@ impl SpectroApp {
                 painter.rect_stroke(
                     rect,
                     16.0,
-                    egui::Stroke::new(2.0, egui::Color32::from_rgb(60, 60, 80)),
+                    egui::Stroke::new(2.0, border_color(&ui.ctx().style().visuals)),
                 );
 
                 ui.add_space(20.0);
@@ -501,7 +506,7 @@ impl SpectroApp {
                     ui.label(
                         egui::RichText::new(format!("ΔE*00 = {:.2}", delta_e))
                             .size(24.0)
-                            .color(egui::Color32::GRAY),
+                            .color(muted_text_color(&ui.ctx().style().visuals)),
                     );
 
                     if let Some(delta_e_76) = self.calculate_delta_e_76(&lab) {
@@ -527,7 +532,7 @@ impl SpectroApp {
                     ui.add_space(ui.available_width() / 2.0 - 150.0);
 
                     egui::Frame::none()
-                        .fill(egui::Color32::from_rgb(28, 28, 36))
+                        .fill(info_panel_color(&ui.ctx().style().visuals))
                         .rounding(8.0)
                         .inner_margin(egui::Margin::same(16.0))
                         .show(ui, |ui| {
@@ -536,7 +541,7 @@ impl SpectroApp {
                                     ui.label(
                                         egui::RichText::new("L*")
                                             .size(14.0)
-                                            .color(egui::Color32::GRAY),
+                                            .color(muted_text_color(&ui.ctx().style().visuals)),
                                     );
                                     ui.label(
                                         egui::RichText::new(format!("{:.1}", lab.l))
@@ -549,7 +554,7 @@ impl SpectroApp {
                                     ui.label(
                                         egui::RichText::new("a*")
                                             .size(14.0)
-                                            .color(egui::Color32::GRAY),
+                                            .color(muted_text_color(&ui.ctx().style().visuals)),
                                     );
                                     ui.label(
                                         egui::RichText::new(format!("{:.1}", lab.a))
@@ -562,7 +567,7 @@ impl SpectroApp {
                                     ui.label(
                                         egui::RichText::new("b*")
                                             .size(14.0)
-                                            .color(egui::Color32::GRAY),
+                                            .color(muted_text_color(&ui.ctx().style().visuals)),
                                     );
                                     ui.label(
                                         egui::RichText::new(format!("{:.1}", lab.b))
@@ -580,7 +585,7 @@ impl SpectroApp {
                 ui.label(
                     egui::RichText::new(format!("sRGB: ({}, {}, {})", r, g, b))
                         .size(16.0)
-                        .color(egui::Color32::GRAY),
+                        .color(muted_text_color(&ui.ctx().style().visuals)),
                 );
                 ui.label(
                     egui::RichText::new(format!("#{:02X}{:02X}{:02X}", r, g, b))
@@ -600,7 +605,7 @@ impl SpectroApp {
                 ui.label(
                     egui::RichText::new("No measurement yet")
                         .size(20.0)
-                        .color(egui::Color32::GRAY),
+                        .color(muted_text_color(&ui.ctx().style().visuals)),
                 );
                 ui.add_space(10.0);
                 ui.label(
@@ -836,25 +841,41 @@ impl SpectroApp {
     }
 
     fn render_expert_inspector(&mut self, ui: &mut egui::Ui) {
-        ui.heading("🔬 Device Inspector");
+        ui.heading(t!("gui-device-inspector"));
         ui.add_space(10.0);
 
         // Tab bar
         ui.horizontal(|ui| {
-            ui.selectable_value(&mut self.expert_tab, ExpertTab::DeviceInfo, "📱 Device");
-            ui.selectable_value(&mut self.expert_tab, ExpertTab::RawSensor, "📈 Raw Data");
-            ui.selectable_value(&mut self.expert_tab, ExpertTab::Algorithm, "🧮 Algorithm");
+            ui.selectable_value(
+                &mut self.expert_tab,
+                ExpertTab::DeviceInfo,
+                format!("📱 {}", t!("gui-device")),
+            );
+            ui.selectable_value(
+                &mut self.expert_tab,
+                ExpertTab::RawSensor,
+                format!("📈 {}", t!("gui-raw-data")),
+            );
+            ui.selectable_value(
+                &mut self.expert_tab,
+                ExpertTab::Algorithm,
+                format!("🧮 {}", t!("gui-algorithm")),
+            );
             ui.selectable_value(
                 &mut self.expert_tab,
                 ExpertTab::Chromaticity,
-                "🎯 xy Diagram",
+                format!("🎯 {}", t!("gui-xy-diagram")),
             );
             ui.selectable_value(
                 &mut self.expert_tab,
                 ExpertTab::ColorQuality,
-                "🌈 Color Quality",
+                format!("🌈 {}", t!("gui-color-quality")),
             );
-            ui.selectable_value(&mut self.expert_tab, ExpertTab::Trend, "📈 Trend");
+            ui.selectable_value(
+                &mut self.expert_tab,
+                ExpertTab::Trend,
+                format!("📈 {}", t!("gui-trend")),
+            );
         });
 
         ui.separator();
@@ -871,11 +892,11 @@ impl SpectroApp {
 
     fn render_trend_tab(&self, ui: &mut egui::Ui) {
         ui.add_space(5.0);
-        ui.heading("📈 Measurement Trend");
+        ui.heading(t!("gui-measurement-trend"));
         ui.add_space(10.0);
 
         if self.measurement_history.is_empty() {
-            ui.label("No data to display.");
+            ui.label(t!("gui-no-data"));
             return;
         }
 
@@ -885,6 +906,7 @@ impl SpectroApp {
             .y_axis_label("Value")
             .x_axis_label("Samples (Newest to Oldest)");
 
+        let visuals = ui.ctx().style().visuals.clone();
         plot.show(ui, |plot_ui| {
             // L* Trend
             let l_points: PlotPoints = self
@@ -893,7 +915,11 @@ impl SpectroApp {
                 .enumerate()
                 .map(|(i, e)| [i as f64, e.lab.l as f64])
                 .collect();
-            plot_ui.line(Line::new(l_points).name("L*").color(egui::Color32::WHITE));
+            plot_ui.line(
+                Line::new(l_points)
+                    .name("L*")
+                    .color(plot_line_color(&visuals)),
+            );
 
             // Delta E Trend (if reference exists)
             if self.reference_lab.is_some() {
@@ -915,7 +941,7 @@ impl SpectroApp {
         ui.add_space(5.0);
 
         // Basic Device Info
-        ui.collapsing("📱 Device Information", |ui| {
+        ui.collapsing(t!("gui-device-info"), |ui| {
             egui::Grid::new("device_info_grid")
                 .num_columns(2)
                 .spacing([20.0, 4.0])
@@ -931,8 +957,11 @@ impl SpectroApp {
                         ui.label(&basic.firmware);
                         ui.end_row();
                     } else {
-                        ui.label("Status:");
-                        ui.colored_label(egui::Color32::YELLOW, "Not connected");
+                        ui.label(t!("gui-status"));
+                        ui.colored_label(
+                            warning_color(&ui.ctx().style().visuals),
+                            t!("gui-not-connected"),
+                        );
                         ui.end_row();
                     }
 
@@ -945,9 +974,9 @@ impl SpectroApp {
         });
 
         // EEPROM Calibration Data
-        ui.collapsing("📦 EEPROM Calibration", |ui| {
+        ui.collapsing(t!("gui-eeprom-cal"), |ui| {
             if let Some(ref white_ref) = self.device_info.white_ref {
-                ui.label("White Reference Spectrum:");
+                ui.label(t!("gui-white-ref"));
 
                 // Mini plot of white reference
                 let plot = Plot::new("white_ref_plot")
@@ -955,23 +984,31 @@ impl SpectroApp {
                     .show_axes([true, true])
                     .include_y(0.0);
 
+                let visuals = ui.ctx().style().visuals.clone();
                 plot.show(ui, |plot_ui| {
                     let points: PlotPoints = white_ref
                         .iter()
                         .enumerate()
                         .map(|(i, v)| [(380 + i * 10) as f64, *v as f64])
                         .collect();
-                    plot_ui.line(Line::new(points).color(egui::Color32::WHITE).width(1.5));
+                    plot_ui.line(
+                        Line::new(points)
+                            .color(plot_line_color(&visuals))
+                            .width(1.5),
+                    );
                 });
             } else {
-                ui.colored_label(egui::Color32::GRAY, "White reference data not available");
+                ui.colored_label(
+                    muted_text_color(&ui.ctx().style().visuals),
+                    t!("gui-white-ref-not-avail"),
+                );
             }
 
             ui.add_space(5.0);
 
             // Emissive calibration coefficients
             if let Some(ref emis) = self.device_info.emis_coef {
-                ui.collapsing("Emissive Coefficients", |ui| {
+                ui.collapsing(t!("gui-emissive-coef"), |ui| {
                     ui.label(format!("Count: {} bands", emis.len()));
                     if !emis.is_empty() {
                         ui.label(format!(
@@ -985,7 +1022,7 @@ impl SpectroApp {
 
             // Ambient calibration coefficients
             if let Some(ref amb) = self.device_info.amb_coef {
-                ui.collapsing("Ambient Coefficients", |ui| {
+                ui.collapsing(t!("gui-ambient-coef"), |ui| {
                     ui.label(format!("Count: {} bands", amb.len()));
                     if !amb.is_empty() {
                         ui.label(format!(
@@ -1018,7 +1055,7 @@ impl SpectroApp {
                     if self.is_connected {
                         ui.colored_label(success_color(&ui.ctx().style().visuals), "Yes ✓");
                     } else {
-                        ui.colored_label(egui::Color32::RED, "No ✗");
+                        ui.colored_label(error_color(&ui.ctx().style().visuals), "No ✗");
                     }
                     ui.end_row();
 
@@ -1026,7 +1063,7 @@ impl SpectroApp {
                     if self.is_calibrated {
                         ui.colored_label(success_color(&ui.ctx().style().visuals), "Yes ✓");
                     } else {
-                        ui.colored_label(egui::Color32::YELLOW, "No");
+                        ui.colored_label(warning_color(&ui.ctx().style().visuals), "No");
                     }
                     ui.end_row();
 
@@ -1217,6 +1254,7 @@ impl SpectroApp {
             .allow_zoom(true)
             .allow_drag(true);
 
+        let visuals = ui.ctx().style().visuals.clone();
         plot.show(ui, |plot_ui| {
             // 1. Draw Spectral Locus (Horseshoe)
             let mut locus_points = Vec::new();
@@ -1242,7 +1280,7 @@ impl SpectroApp {
             let d65_y = 0.32903;
             plot_ui.points(
                 Points::new(vec![[d65_x, d65_y]])
-                    .color(egui::Color32::WHITE)
+                    .color(plot_line_color(&visuals))
                     .shape(egui_plot::MarkerShape::Plus)
                     .name("D65"),
             );
@@ -1286,7 +1324,7 @@ impl SpectroApp {
 
     fn render_color_quality_tab(&self, ui: &mut egui::Ui) {
         ui.add_space(5.0);
-        ui.heading("🌈 IES TM-30-18 Color Quality");
+        ui.heading(t!("gui-color-quality-tm30"));
         ui.add_space(10.0);
 
         if let Some(metrics) = &self.last_tm30 {
@@ -1346,7 +1384,7 @@ impl eframe::App for SpectroApp {
         egui::TopBottomPanel::top("top_panel")
             .frame(
                 egui::Frame::none()
-                    .fill(egui::Color32::from_rgb(22, 22, 30))
+                    .fill(panel_bg_color(&ctx.style().visuals))
                     .inner_margin(egui::Margin::symmetric(12.0, 8.0)),
             )
             .show(ctx, |ui| {
@@ -1363,8 +1401,8 @@ impl eframe::App for SpectroApp {
                             ui.label(format!("{} ({})", info.model, info.serial));
                         }
                     } else {
-                        ui.colored_label(egui::Color32::from_rgb(255, 100, 100), "●");
-                        ui.label("Not connected");
+                        ui.colored_label(disconnected_color(&ui.ctx().style().visuals), "●");
+                        ui.label(t!("gui-not-connected"));
                     }
 
                     // Right-aligned controls
@@ -1382,9 +1420,9 @@ impl eframe::App for SpectroApp {
 
                         // Expert mode toggle
                         let toggle_text = if self.is_expert_mode {
-                            "🔬 Expert"
+                            format!("🔬 {}", t!("gui-expert"))
                         } else {
-                            "🎨 Simple"
+                            format!("🎨 {}", t!("gui-simple"))
                         };
                         if ui
                             .selectable_label(self.is_expert_mode, toggle_text)
@@ -1396,7 +1434,7 @@ impl eframe::App for SpectroApp {
                         ui.separator();
 
                         // Settings button
-                        if ui.button("⚙ Settings").clicked() {
+                        if ui.button(format!("⚙ {}", t!("gui-settings"))).clicked() {
                             self.show_settings = !self.show_settings;
                         }
 
@@ -1433,7 +1471,7 @@ impl eframe::App for SpectroApp {
         egui::TopBottomPanel::bottom("bottom_panel")
             .frame(
                 egui::Frame::none()
-                    .fill(egui::Color32::from_rgb(22, 22, 30))
+                    .fill(panel_bg_color(&ctx.style().visuals))
                     .inner_margin(egui::Margin::symmetric(12.0, 8.0)),
             )
             .show(ctx, |ui| {
@@ -1441,25 +1479,25 @@ impl eframe::App for SpectroApp {
                     // Mode selector
                     egui::ComboBox::from_id_salt("mode_selector")
                         .selected_text(match self.selected_mode {
-                            MeasurementMode::Reflective => "📄 Reflective",
-                            MeasurementMode::Emissive => "🖥️ Emissive",
-                            MeasurementMode::Ambient => "💡 Ambient",
+                            MeasurementMode::Reflective => format!("📄 {}", t!("gui-reflective")),
+                            MeasurementMode::Emissive => format!("🖥️ {}", t!("gui-emissive")),
+                            MeasurementMode::Ambient => format!("💡 {}", t!("gui-ambient")),
                         })
                         .show_ui(ui, |ui| {
                             ui.selectable_value(
                                 &mut self.selected_mode,
                                 MeasurementMode::Reflective,
-                                "📄 Reflective (Paper)",
+                                format!("📄 {}", t!("gui-reflective")),
                             );
                             ui.selectable_value(
                                 &mut self.selected_mode,
                                 MeasurementMode::Emissive,
-                                "🖥️ Emissive (Monitor)",
+                                format!("🖥️ {}", t!("gui-emissive")),
                             );
                             ui.selectable_value(
                                 &mut self.selected_mode,
                                 MeasurementMode::Ambient,
-                                "💡 Ambient (Light)",
+                                format!("💡 {}", t!("gui-ambient")),
                             );
                         });
 
@@ -1468,7 +1506,8 @@ impl eframe::App for SpectroApp {
                     // Main action buttons
                     let measure_btn = ui.add_enabled(
                         !self.is_busy && self.is_connected,
-                        egui::Button::new("🚀 Measure").min_size(egui::vec2(100.0, 30.0)),
+                        egui::Button::new(format!("🚀 {}", t!("gui-measure")))
+                            .min_size(egui::vec2(100.0, 30.0)),
                     );
                     if measure_btn.clicked() {
                         self.is_busy = true;
@@ -1479,7 +1518,8 @@ impl eframe::App for SpectroApp {
 
                     let cal_btn = ui.add_enabled(
                         !self.is_busy && self.is_connected,
-                        egui::Button::new("🎯 Calibrate").min_size(egui::vec2(100.0, 30.0)),
+                        egui::Button::new(format!("🎯 {}", t!("gui-calibrate")))
+                            .min_size(egui::vec2(100.0, 30.0)),
                     );
                     if cal_btn.clicked() {
                         self.calibration_wizard.start();
@@ -1487,9 +1527,9 @@ impl eframe::App for SpectroApp {
 
                     // Continuous measurement toggle
                     let continuous_label = if self.is_continuous {
-                        "⏸️ Stop Loop"
+                        format!("⏸️ {}", t!("gui-stop-loop"))
                     } else {
-                        "▶️ Continuous"
+                        format!("▶️ {}", t!("gui-continuous"))
                     };
                     if ui
                         .add_enabled(
@@ -1506,13 +1546,15 @@ impl eframe::App for SpectroApp {
                     if self.is_continuous {
                         ui.add(
                             egui::Slider::new(&mut self.continuous_interval, 0.5..=5.0)
-                                .text("interval (s)")
+                                .text(t!("gui-interval"))
                                 .step_by(0.1),
                         );
                     }
 
                     // Reconnect button (only shown when disconnected)
-                    if !self.is_connected && ui.button("🔌 Reconnect").clicked() {
+                    if !self.is_connected
+                        && ui.button(format!("🔌 {}", t!("gui-reconnect"))).clicked()
+                    {
                         self.is_busy = true;
                         self.cmd_tx.send(DeviceCommand::Connect).ok();
                     }
@@ -1521,9 +1563,15 @@ impl eframe::App for SpectroApp {
 
                     // Calibration status indicator
                     let (cal_color, cal_text) = if self.is_calibrated {
-                        (success_color(&ctx.style().visuals), "✓ Calibrated")
+                        (
+                            success_color(&ctx.style().visuals),
+                            format!("✓ {}", t!("gui-calibrated")),
+                        )
                     } else {
-                        (egui::Color32::from_rgb(255, 193, 7), "⚠ Needs Calibration")
+                        (
+                            egui::Color32::from_rgb(255, 193, 7),
+                            format!("⚠ {}", t!("gui-needs-calibration")),
+                        )
                     };
                     ui.colored_label(cal_color, cal_text);
 
@@ -1531,9 +1579,9 @@ impl eframe::App for SpectroApp {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui
                             .button(if self.reference_lab.is_some() {
-                                "📌 Reference Set"
+                                format!("📌 {}", t!("gui-reference-set"))
                             } else {
-                                "📌 Set Reference"
+                                format!("📌 {}", t!("gui-set-reference"))
                             })
                             .clicked()
                         {
@@ -1545,19 +1593,19 @@ impl eframe::App for SpectroApp {
 
         // === Settings Window ===
         if self.show_settings {
-            egui::Window::new("⚙ Settings")
+            egui::Window::new(format!("⚙ {}", t!("gui-settings")))
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .show(ctx, |ui| {
-                    ui.heading("Colorimetry Standards");
+                    ui.heading(t!("gui-colorimetry-standards"));
                     ui.add_space(10.0);
 
                     egui::Grid::new("settings_grid")
                         .num_columns(2)
                         .spacing([20.0, 10.0])
                         .show(ui, |ui| {
-                            ui.label("Illuminant:");
+                            ui.label(t!("gui-illuminant"));
                             egui::ComboBox::from_id_salt("illuminant_selector_settings")
                                 .selected_text(format!("{:?}", self.selected_illuminant))
                                 .show_ui(ui, |ui| {
@@ -1594,7 +1642,7 @@ impl eframe::App for SpectroApp {
                                 });
                             ui.end_row();
 
-                            ui.label("Observer:");
+                            ui.label(t!("gui-observer"));
                             egui::ComboBox::from_id_salt("observer_selector_settings")
                                 .selected_text(match self.selected_observer {
                                     Observer::CIE1931_2 => "2° (Standard)",
@@ -1617,10 +1665,48 @@ impl eframe::App for SpectroApp {
 
                     ui.add_space(20.0);
                     ui.separator();
+                    ui.heading(t!("gui-language-title"));
+                    ui.add_space(10.0);
+
+                    egui::Grid::new("language_settings_grid")
+                        .num_columns(2)
+                        .spacing([20.0, 10.0])
+                        .show(ui, |ui| {
+                            ui.label(t!("gui-language"));
+                            let old_lang = self.theme_config.language;
+                            egui::ComboBox::from_id_salt("language_selector")
+                                .selected_text(self.theme_config.language.label())
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(
+                                        &mut self.theme_config.language,
+                                        crate::i18n::Language::Auto,
+                                        crate::i18n::Language::Auto.label(),
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.theme_config.language,
+                                        crate::i18n::Language::EnUS,
+                                        crate::i18n::Language::EnUS.label(),
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.theme_config.language,
+                                        crate::i18n::Language::ZhCN,
+                                        crate::i18n::Language::ZhCN.label(),
+                                    );
+                                });
+                            // Apply language change immediately
+                            if self.theme_config.language != old_lang {
+                                crate::i18n::init(self.theme_config.language);
+                                let _ = self.theme_config.save("spectro_theme.json");
+                            }
+                            ui.end_row();
+                        });
+
+                    ui.add_space(20.0);
+                    ui.separator();
                     ui.add_space(10.0);
 
                     ui.horizontal(|ui| {
-                        if ui.button("Close").clicked() {
+                        if ui.button(t!("gui-close")).clicked() {
                             self.show_settings = false;
                         }
                     });
@@ -1629,12 +1715,12 @@ impl eframe::App for SpectroApp {
 
         // === Reference Input Window (Modal-like) ===
         if self.show_reference_input {
-            egui::Window::new("📌 Set Reference Color")
+            egui::Window::new(t!("gui-set-ref-color"))
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .show(ctx, |ui| {
-                    ui.label("Enter the target Lab values for comparison:");
+                    ui.label(t!("gui-enter-lab"));
                     ui.add_space(10.0);
 
                     egui::Grid::new("ref_input_grid")
@@ -1672,7 +1758,10 @@ impl eframe::App for SpectroApp {
 
                     ui.add_space(10.0);
                     ui.horizontal(|ui| {
-                        if ui.button("✓ Set").clicked() {
+                        if ui
+                            .button(format!("✓ {}", t!("gui-set-reference")))
+                            .clicked()
+                        {
                             self.reference_lab = Some(Lab {
                                 l: self.ref_input_l,
                                 a: self.ref_input_a,
@@ -1680,7 +1769,7 @@ impl eframe::App for SpectroApp {
                             });
                             self.show_reference_input = false;
                         }
-                        if ui.button("Use Current").clicked() {
+                        if ui.button(t!("gui-use-current")).clicked() {
                             if let Some(lab) = self.get_current_lab() {
                                 self.ref_input_l = lab.l;
                                 self.ref_input_a = lab.a;
@@ -1689,10 +1778,10 @@ impl eframe::App for SpectroApp {
                                 self.show_reference_input = false;
                             }
                         }
-                        if ui.button("Clear").clicked() {
+                        if ui.button(t!("gui-clear")).clicked() {
                             self.reference_lab = None;
                         }
-                        if ui.button("Cancel").clicked() {
+                        if ui.button(t!("gui-cancel")).clicked() {
                             self.show_reference_input = false;
                         }
                     });
@@ -1706,7 +1795,7 @@ impl eframe::App for SpectroApp {
                 .default_width(200.0)
                 .min_width(150.0)
                 .show(ctx, |ui| {
-                    ui.heading("📋 History");
+                    ui.heading(t!("gui-history-title"));
                     ui.separator();
 
                     egui::ScrollArea::vertical().show(ui, |ui| {
@@ -1807,7 +1896,7 @@ impl eframe::App for SpectroApp {
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::none()
-                    .fill(egui::Color32::from_rgb(18, 18, 24))
+                    .fill(panel_bg_dark_color(&ctx.style().visuals))
                     .inner_margin(egui::Margin::same(16.0)),
             )
             .show(ctx, |ui| {
