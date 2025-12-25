@@ -12,66 +12,15 @@ use egui_plot::{HLine, Legend, Line, Plot, PlotPoints, Points, VLine};
 use spectro_rs::{
     colorimetry::{illuminant, Lab, XYZ, X_BAR_2, Y_BAR_2, Z_BAR_2},
     discover,
-    tm30::{calculate_tm30, TM30Metrics},
-    BoxedSpectrometer, DeviceInfo, Illuminant, MeasurementMode, Observer, SpectralData,
+    tm30::calculate_tm30,
+    BoxedSpectrometer, Illuminant, MeasurementMode, Observer, SpectralData,
 };
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::calibration::CalibrationWizard;
+use crate::shared::{DeviceCommand, ExtendedDeviceInfo, MeasurementEntry, UIUpdate};
 use crate::theme::ThemeConfig;
-
-// ============================================================================
-// Device Information Structures
-// ============================================================================
-
-/// Extended device information including EEPROM data for Expert mode.
-#[derive(Debug, Clone, Default)]
-struct ExtendedDeviceInfo {
-    /// Basic device info (model, serial, firmware)
-    basic: Option<DeviceInfo>,
-    /// Calibration version from EEPROM
-    cal_version: Option<u16>,
-    /// White reference spectrum from EEPROM (36 values)
-    white_ref: Option<Vec<f32>>,
-    /// Emissive calibration coefficients (36 values)
-    emis_coef: Option<Vec<f32>>,
-    /// Ambient calibration coefficients (36 values)
-    amb_coef: Option<Vec<f32>>,
-    /// Linearization polynomial (normal gain)
-    lin_normal: Option<Vec<f32>>,
-    /// Linearization polynomial (high gain)
-    lin_high: Option<Vec<f32>>,
-}
-
-/// Measurement history entry
-#[derive(Debug, Clone, serde::Serialize)]
-struct MeasurementEntry {
-    timestamp: String,
-    mode: MeasurementMode,
-    data: SpectralData,
-    lab: Lab,
-    delta_e: Option<f32>,
-}
-
-// ============================================================================
-// Communication Protocols
-// ============================================================================
-
-/// Messages sent from the UI thread to the Device worker thread.
-enum DeviceCommand {
-    Connect,
-    Calibrate,
-    Measure(MeasurementMode),
-}
-
-/// Messages sent from the Device worker thread to the UI thread.
-enum UIUpdate {
-    Connected(ExtendedDeviceInfo),
-    Status(String),
-    Result(SpectralData, Option<Box<TM30Metrics>>),
-    Error(String),
-    Disconnected,
-}
 
 // ============================================================================
 // Application State
@@ -92,7 +41,7 @@ pub struct SpectroApp {
     // Measurement State
     selected_mode: MeasurementMode,
     last_result: Option<SpectralData>,
-    last_tm30: Option<TM30Metrics>,
+    last_tm30: Option<spectro_rs::tm30::TM30Metrics>,
     measurement_history: Vec<MeasurementEntry>,
 
     // Reference/Standard for comparison
@@ -122,9 +71,8 @@ pub struct SpectroApp {
     selected_illuminant: Illuminant,
     selected_observer: Observer,
 
-    // Calibration wizard state
-    show_calibration_wizard: bool,
-    calibration_step: CalibrationStep,
+    // Calibration wizard (extracted component)
+    calibration_wizard: CalibrationWizard,
 }
 
 /// Tabs in the Expert panel
@@ -136,19 +84,6 @@ enum ExpertTab {
     Chromaticity,
     ColorQuality,
     Trend,
-}
-
-/// Calibration wizard steps
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum CalibrationStep {
-    /// Step 1: Rotate the dial to calibration position
-    RotateDial,
-    /// Step 2: Place device on white tile
-    PlaceOnTile,
-    /// Step 3: Performing calibration
-    Calibrating,
-    /// Step 4: Calibration complete
-    Complete,
 }
 
 // ============================================================================
@@ -311,8 +246,7 @@ impl SpectroApp {
             last_measurement_time: None,
             selected_illuminant: Illuminant::D65,
             selected_observer: Observer::CIE1931_2,
-            show_calibration_wizard: false,
-            calibration_step: CalibrationStep::RotateDial,
+            calibration_wizard: CalibrationWizard::new(),
         }
     }
 
@@ -439,345 +373,8 @@ impl SpectroApp {
         }
     }
 
-    /// Render a visual representation of the ColorMunki dial
-    /// showing the different positions for calibration and measurement modes.
-    /// The dial rotates on the right side from Bottom (Reflective) to Top (Ambient).
-    fn render_device_dial(&self, ui: &mut egui::Ui, highlight_position: &str, size: f32) {
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::hover());
-        let painter = ui.painter();
-        let center = rect.center();
-        let outer_radius = size / 2.0 - 10.0;
-        let inner_radius = outer_radius * 0.7;
-
-        // Draw outer ring (dial housing)
-        painter.circle_stroke(
-            center,
-            outer_radius,
-            egui::Stroke::new(3.0, egui::Color32::from_gray(140)),
-        );
-
-        // Draw active range arc (Right side semicircle: -90 to +90 degrees)
-        // From Top (-PI/2) to Bottom (PI/2)
-        // egui::Painter doesn't have a direct arc method, so we draw it manually
-        let arc_radius = outer_radius;
-        let arc_start_angle = -std::f32::consts::FRAC_PI_2;
-        let arc_end_angle = std::f32::consts::FRAC_PI_2;
-        let arc_points: Vec<egui::Pos2> = (0..=50)
-            .map(|i| {
-                let t = i as f32 / 50.0;
-                let angle = arc_start_angle + t * (arc_end_angle - arc_start_angle);
-                center + egui::vec2(angle.cos() * arc_radius, angle.sin() * arc_radius)
-            })
-            .collect();
-        painter.add(egui::Shape::Path(egui::epaint::PathShape::line(
-            arc_points,
-            egui::Stroke::new(2.0, egui::Color32::from_gray(80)),
-        )));
-
-        // Define physical layout based on user description (CCW Rotation from Bottom):
-        // 1. Reflective (Paper/Spot): Bottom (6 o'clock) -> PI/2
-        // 2. Calibration: ~45 deg CCW -> Bottom-Right (4:30) -> PI/4
-        // 3. Projector (No Diffuser): ~45 deg CCW -> Right (3 o'clock) -> 0
-        // 4. Ambient (Diffuser): Top (12 o'clock) -> -PI/2
-        let positions = [
-            (
-                "REFLECTIVE",
-                std::f32::consts::FRAC_PI_2,
-                egui::Color32::from_rgb(100, 180, 255),
-                false, // is_capsule
-            ),
-            (
-                "CALIBRATE",
-                std::f32::consts::FRAC_PI_4,
-                egui::Color32::YELLOW,
-                true, // is_capsule
-            ),
-            (
-                "PROJECTOR",
-                0.0,
-                egui::Color32::from_rgb(255, 120, 120),
-                false,
-            ),
-            (
-                "AMBIENT",
-                -std::f32::consts::FRAC_PI_2,
-                egui::Color32::from_rgb(150, 255, 150),
-                false,
-            ),
-        ];
-
-        // Draw markers and labels
-        for (name, angle, color, is_capsule) in &positions {
-            // Check match (handle Emissive as Projector/Emissive)
-            let is_highlighted = highlight_position.eq_ignore_ascii_case(name)
-                || (name == &"PROJECTOR" && highlight_position.eq_ignore_ascii_case("EMISSIVE"));
-
-            let marker_pos =
-                center + egui::vec2(angle.cos() * outer_radius, angle.sin() * outer_radius);
-
-            let base_color = if is_highlighted {
-                *color
-            } else {
-                egui::Color32::from_gray(100)
-            };
-
-            // Draw Marker (Capsule or Circle)
-            if *is_capsule {
-                let rect = egui::Rect::from_center_size(marker_pos, egui::vec2(16.0, 8.0));
-                painter.rect_filled(rect, 4.0, base_color);
-            } else {
-                painter.circle_filled(marker_pos, 5.0, base_color);
-            }
-
-            // Draw Label
-            let label_dist = outer_radius + 20.0;
-            let label_pos = center + egui::vec2(angle.cos() * label_dist, angle.sin() * label_dist);
-            let font = egui::FontId::proportional(if is_highlighted { 12.0 } else { 10.0 });
-
-            // Adjust label text for display (Projector/Emissive)
-            let display_name = if *name == "PROJECTOR" {
-                "PROJ/EMIS"
-            } else {
-                name
-            };
-
-            painter.text(
-                label_pos,
-                egui::Align2::CENTER_CENTER,
-                display_name,
-                font,
-                if is_highlighted {
-                    *color
-                } else {
-                    egui::Color32::from_gray(180)
-                },
-            );
-
-            // Draw Selector Needle
-            if is_highlighted {
-                painter.line_segment([center, marker_pos], egui::Stroke::new(3.0, *color));
-                painter.circle_filled(center, inner_radius * 0.2, *color);
-            }
-        }
-
-        // Draw center pivot
-        painter.circle_filled(center, 4.0, egui::Color32::WHITE);
-        painter.circle_stroke(center, 4.0, egui::Stroke::new(1.0, egui::Color32::GRAY));
-    }
-
-    /// Render the step-by-step calibration wizard
-    fn render_calibration_wizard(&mut self, ctx: &egui::Context) {
-        egui::Window::new("🎯 Instrument Calibration")
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-            .fixed_size([400.0, 480.0])
-            .show(ctx, |ui| {
-                ui.vertical_centered(|ui| {
-                    ui.add_space(10.0);
-
-                    // Step Indicator
-                    ui.horizontal(|ui| {
-                        let steps = ["Dial", "Position", "Calibrate", "Done"];
-                        let current_idx = self.calibration_step as usize;
-
-                        for (i, step) in steps.iter().enumerate() {
-                            let is_active = i == current_idx;
-                            let is_done = i < current_idx;
-
-                            let color = if is_active {
-                                egui::Color32::WHITE
-                            } else if is_done {
-                                egui::Color32::from_rgb(50, 205, 50)
-                            } else {
-                                egui::Color32::GRAY
-                            };
-
-                            let text = if is_done {
-                                format!("✓ {}", step)
-                            } else {
-                                format!("{}. {}", i + 1, step)
-                            };
-
-                            ui.label(egui::RichText::new(text).color(color).strong());
-                            if i < steps.len() - 1 {
-                                ui.label(
-                                    egui::RichText::new(" → ").color(egui::Color32::DARK_GRAY),
-                                );
-                            }
-                        }
-                    });
-
-                    ui.add_space(20.0);
-                    ui.separator();
-                    ui.add_space(20.0);
-
-                    match self.calibration_step {
-                        CalibrationStep::RotateDial => {
-                            ui.label(
-                                egui::RichText::new("Step 1: Rotate the Dial")
-                                    .size(20.0)
-                                    .strong(),
-                            );
-                            ui.add_space(20.0);
-                            self.render_device_dial(ui, "CALIBRATE", 180.0);
-                            ui.add_space(20.0);
-                            ui.label("Rotate dial to the");
-                            ui.label(
-                                egui::RichText::new("CALIBRATION POSITION")
-                                    .color(egui::Color32::YELLOW)
-                                    .strong(),
-                            );
-                            ui.label("(Look for the small PILL/RECTANGLE icon)");
-                            ui.add_space(20.0);
-
-                            // Navigation Buttons
-                            ui.horizontal(|ui| {
-                                // Standard Next
-                                if ui
-                                    .button(egui::RichText::new("Next Step →").size(16.0))
-                                    .clicked()
-                                {
-                                    self.calibration_step = CalibrationStep::PlaceOnTile;
-                                }
-
-                                ui.add_space(10.0);
-
-                                // Quick/Force Calibrate
-                                if ui
-                                    .button(
-                                        egui::RichText::new("⚡ Quick Calibrate")
-                                            .color(egui::Color32::LIGHT_BLUE),
-                                    )
-                                    .clicked()
-                                {
-                                    self.is_busy = true;
-                                    self.cmd_tx.send(DeviceCommand::Calibrate).ok();
-                                    self.calibration_step = CalibrationStep::Calibrating;
-                                }
-                            });
-                            ui.label(
-                                egui::RichText::new(
-                                    "Use 'Quick Calibrate' if device is already positioned.",
-                                )
-                                .small()
-                                .italics(),
-                            );
-                        }
-                        CalibrationStep::PlaceOnTile => {
-                            ui.label(
-                                egui::RichText::new("Step 2: Position Device")
-                                    .size(20.0)
-                                    .strong(),
-                            );
-                            ui.add_space(10.0);
-                            ui.label("Place the device securely on its");
-                            ui.label(
-                                egui::RichText::new("WHITE CALIBRATION TILE")
-                                    .color(egui::Color32::WHITE)
-                                    .strong(),
-                            );
-                            ui.label("(usually located on the bottom of the soft case)");
-
-                            ui.add_space(30.0);
-                            // Simple SVG-like representation of the device on tile
-                            let (rect, _) = ui.allocate_exact_size(
-                                egui::vec2(200.0, 100.0),
-                                egui::Sense::hover(),
-                            );
-                            let painter = ui.painter();
-                            // Tile
-                            painter.rect_filled(
-                                egui::Rect::from_min_size(
-                                    rect.left_bottom() - egui::vec2(0.0, 20.0),
-                                    egui::vec2(200.0, 20.0),
-                                ),
-                                2.0,
-                                egui::Color32::from_gray(240),
-                            );
-                            // Device
-                            painter.rect_filled(
-                                egui::Rect::from_min_size(
-                                    rect.left_top() + egui::vec2(25.0, 0.0),
-                                    egui::vec2(150.0, 80.0),
-                                ),
-                                10.0,
-                                egui::Color32::from_rgb(40, 40, 50),
-                            );
-                            ui.add_space(30.0);
-
-                            ui.horizontal(|ui| {
-                                if ui.button("← Back").clicked() {
-                                    self.calibration_step = CalibrationStep::RotateDial;
-                                }
-                                ui.add_space(20.0);
-                                if ui
-                                    .button(egui::RichText::new("Start Calibration 🎯").size(16.0))
-                                    .clicked()
-                                {
-                                    self.is_busy = true;
-                                    self.cmd_tx.send(DeviceCommand::Calibrate).ok();
-                                    self.calibration_step = CalibrationStep::Calibrating;
-                                }
-                            });
-                        }
-                        CalibrationStep::Calibrating => {
-                            ui.label(
-                                egui::RichText::new("Step 3: Calibrating...")
-                                    .size(20.0)
-                                    .strong(),
-                            );
-                            ui.add_space(20.0);
-                            ui.add(egui::Spinner::new().size(60.0));
-                            ui.add_space(20.0);
-                            ui.label("Please do not move the device.");
-                            ui.label("Taking dark and white reference readings...");
-
-                            if self.status_msg.contains("❌") {
-                                ui.add_space(10.0);
-                                ui.colored_label(egui::Color32::RED, &self.status_msg);
-                                if ui.button("Retry").clicked() {
-                                    self.calibration_step = CalibrationStep::PlaceOnTile;
-                                }
-                            }
-                        }
-                        CalibrationStep::Complete => {
-                            ui.label(
-                                egui::RichText::new("Step 4: Calibration Complete")
-                                    .size(20.0)
-                                    .strong(),
-                            );
-                            ui.add_space(20.0);
-                            ui.label(
-                                egui::RichText::new("✓ Success")
-                                    .color(egui::Color32::from_rgb(50, 205, 50))
-                                    .size(40.0)
-                                    .strong(),
-                            );
-                            ui.add_space(20.0);
-                            ui.label("Instrument is now ready for measurement.");
-                            ui.add_space(20.0);
-
-                            if ui
-                                .button(egui::RichText::new("Finish").size(18.0))
-                                .clicked()
-                            {
-                                self.show_calibration_wizard = false;
-                                self.calibration_step = CalibrationStep::RotateDial;
-                            }
-                        }
-                    }
-
-                    ui.add_space(20.0);
-                    if self.calibration_step != CalibrationStep::Calibrating
-                        && self.calibration_step != CalibrationStep::Complete
-                        && ui.button("Cancel").clicked()
-                    {
-                        self.show_calibration_wizard = false;
-                    }
-                });
-            });
-    }
+    // NOTE: render_device_dial and render_calibration_wizard have been
+    // extracted to crate::calibration::CalibrationWizard
 
     /// Export the measurement history to a CGATS (.ti3) file.
     fn export_history_cgats(&self) {
@@ -1722,9 +1319,7 @@ impl eframe::App for SpectroApp {
                 UIUpdate::Status(msg) => {
                     if msg.contains("Calibration successful") {
                         self.is_calibrated = true;
-                        if self.show_calibration_wizard {
-                            self.calibration_step = CalibrationStep::Complete;
-                        }
+                        self.calibration_wizard.on_calibration_success();
                     }
                     self.status_msg = msg;
                     self.is_busy = false;
@@ -1887,8 +1482,7 @@ impl eframe::App for SpectroApp {
                         egui::Button::new("🎯 Calibrate").min_size(egui::vec2(100.0, 30.0)),
                     );
                     if cal_btn.clicked() {
-                        self.show_calibration_wizard = true;
-                        self.calibration_step = CalibrationStep::RotateDial;
+                        self.calibration_wizard.start();
                     }
 
                     // Continuous measurement toggle
@@ -2223,36 +1817,25 @@ impl eframe::App for SpectroApp {
                     self.render_simple_workspace(ui);
                 }
 
-                // Calibration Wizard
-                if self.show_calibration_wizard {
-                    self.render_calibration_wizard(ctx);
-                }
+                // Calibration Wizard (extracted component)
+                self.calibration_wizard.render(
+                    ctx,
+                    &self.cmd_tx,
+                    &mut self.is_busy,
+                    &self.status_msg,
+                );
 
                 // Mode Guidance reminder (if we're busy measuring and not in the wizard)
                 if self.is_busy
-                    && !self.show_calibration_wizard
+                    && !self.calibration_wizard.show
                     && !self.status_msg.contains("Calibrate")
                 {
-                    egui::Window::new("⚙️ Dial Check")
-                        .collapsible(false)
-                        .resizable(false)
-                        .anchor(egui::Align2::RIGHT_BOTTOM, [-20.0, -80.0])
-                        .show(ctx, |ui| {
-                            ui.vertical_centered(|ui| {
-                                ui.label(egui::RichText::new("Check Dial Position").strong());
-                                let highlight = match self.selected_mode {
-                                    MeasurementMode::Reflective => "REFLECTIVE",
-                                    MeasurementMode::Emissive => "EMISSIVE",
-                                    MeasurementMode::Ambient => "AMBIENT",
-                                };
-                                self.render_device_dial(ui, highlight, 100.0);
-                                ui.add_space(5.0);
-                                ui.label(
-                                    egui::RichText::new(format!("Set to {:?}", self.selected_mode))
-                                        .small(),
-                                );
-                            });
-                        });
+                    let highlight = match self.selected_mode {
+                        MeasurementMode::Reflective => "REFLECTIVE",
+                        MeasurementMode::Emissive => "EMISSIVE",
+                        MeasurementMode::Ambient => "AMBIENT",
+                    };
+                    CalibrationWizard::render_dial_check(ctx, highlight);
                 }
             });
 

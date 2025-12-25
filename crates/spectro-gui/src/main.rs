@@ -1,4 +1,6 @@
 mod app;
+mod calibration;
+mod shared;
 mod theme;
 mod tm30_gui;
 
