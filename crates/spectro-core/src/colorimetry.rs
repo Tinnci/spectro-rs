@@ -473,6 +473,22 @@ pub struct Jzazbz {
     pub bz: f32,
 }
 
+pub fn calculate_cct(spd: &crate::spectrum::SpectralData) -> (f32, f32) {
+    let xyz = spd.to_xyz();
+    let sum = xyz.x + xyz.y + xyz.z;
+    if sum == 0.0 {
+        return (0.0, 0.0);
+    }
+    let x = xyz.x / sum;
+    let y = xyz.y / sum;
+
+    // McCamy's formula
+    let n = (x - 0.3320) / (0.1858 - y);
+    let cct = 449.0 * n.powi(3) + 3525.0 * n.powi(2) + 6823.3 * n + 5524.3;
+
+    (cct, 0.0)
+}
+
 impl XYZ {
     /// Convert XYZ to CIE L*a*b* using the given white point.
     /// Uses precise CIE constants for continuity at the threshold.
