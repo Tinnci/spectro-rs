@@ -1,4 +1,5 @@
 mod app;
+mod theme;
 mod tm30_gui;
 
 use eframe::egui;

@@ -16,6 +16,9 @@ use spectro_rs::{
     BoxedSpectrometer, DeviceInfo, Illuminant, MeasurementMode, Observer, SpectralData,
 };
 use std::thread;
+use std::time::{Duration, Instant};
+
+use crate::theme::ThemeConfig;
 
 // ============================================================================
 // Device Information Structures
@@ -105,6 +108,15 @@ pub struct SpectroApp {
     is_expert_mode: bool,
     expert_tab: ExpertTab,
     show_reference_input: bool,
+    show_settings: bool,
+
+    // Theme and UX
+    theme_config: ThemeConfig,
+
+    // Continuous measurement
+    is_continuous: bool,
+    continuous_interval: f32, // seconds
+    last_measurement_time: Option<Instant>,
 
     // Algorithm calculation settings
     selected_illuminant: Illuminant,
@@ -119,6 +131,7 @@ enum ExpertTab {
     Algorithm,
     Chromaticity,
     ColorQuality,
+    Trend,
 }
 
 // ============================================================================
@@ -127,14 +140,9 @@ enum ExpertTab {
 
 impl SpectroApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        // Customize look and feel with modern dark theme
-        let mut visuals = egui::Visuals::dark();
-        visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(18, 18, 24);
-        visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(28, 28, 36);
-        visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(45, 45, 60);
-        visuals.widgets.active.bg_fill = egui::Color32::from_rgb(60, 60, 80);
-        visuals.extreme_bg_color = egui::Color32::from_rgb(12, 12, 16);
-        visuals.faint_bg_color = egui::Color32::from_rgb(22, 22, 30);
+        // Load theme configuration
+        let theme_config = ThemeConfig::load_or_default("spectro_theme.json");
+        let visuals = theme_config.to_visuals();
         cc.egui_ctx.set_visuals(visuals);
 
         let (cmd_tx, cmd_rx) = unbounded();
@@ -279,6 +287,11 @@ impl SpectroApp {
             is_expert_mode: false,
             expert_tab: ExpertTab::DeviceInfo,
             show_reference_input: false,
+            show_settings: false,
+            theme_config,
+            is_continuous: false,
+            continuous_interval: 2.0,
+            last_measurement_time: None,
             selected_illuminant: Illuminant::D65,
             selected_observer: Observer::CIE1931_2,
         }
@@ -339,7 +352,7 @@ impl SpectroApp {
         let delta_e = self
             .reference_lab
             .as_ref()
-            .map(|ref_lab| lab.delta_e_76(ref_lab));
+            .map(|ref_lab| lab.delta_e_2000(ref_lab));
 
         let entry = MeasurementEntry {
             timestamp: chrono::Local::now().format("%H:%M:%S").to_string(),
@@ -403,6 +416,70 @@ impl SpectroApp {
                 if let Err(e) = std::fs::write(path, json) {
                     eprintln!("Failed to write JSON: {}", e);
                 }
+            }
+        }
+    }
+
+    /// Export the measurement history to a CGATS (.ti3) file.
+    fn export_history_cgats(&self) {
+        if self.measurement_history.is_empty() {
+            return;
+        }
+
+        let file_path = rfd::FileDialog::new()
+            .add_filter("CGATS File", &["ti3", "txt"])
+            .set_file_name("measurements.ti3")
+            .save_file();
+
+        if let Some(path) = file_path {
+            let mut cgats = String::new();
+            cgats.push_str("CTI3\n\n");
+            cgats.push_str("DESCRIPTOR \"Argyll Device Measurement data\"\n");
+            cgats.push_str("ORIGINATOR \"spectro-rs\"\n");
+            cgats.push_str(&format!(
+                "CREATED \"{}\"\n\n",
+                chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
+            ));
+
+            // Define fields: ID, Lab, XYZ, and Spectral data
+            cgats.push_str("NUMBER_OF_FIELDS 47\n");
+            cgats.push_str("BEGIN_DATA_FORMAT\n");
+            cgats.push_str("SAMPLE_ID SAMPLE_NAME LAB_L LAB_A LAB_B XYZ_X XYZ_Y XYZ_Z ");
+            for wl in (380..=780).step_by(10) {
+                cgats.push_str(&format!("SPEC_{} ", wl));
+            }
+            cgats.push_str("\nEND_DATA_FORMAT\n\n");
+
+            cgats.push_str(&format!(
+                "NUMBER_OF_SETS {}\n",
+                self.measurement_history.len()
+            ));
+            cgats.push_str("BEGIN_DATA\n");
+
+            for (i, entry) in self.measurement_history.iter().enumerate() {
+                let xyz = entry.data.to_xyz();
+                cgats.push_str(&format!(
+                    "{} \"{}\" {:.4} {:.4} {:.4} {:.4} {:.4} {:.4} ",
+                    i + 1,
+                    entry.timestamp,
+                    entry.lab.l,
+                    entry.lab.a,
+                    entry.lab.b,
+                    xyz.x,
+                    xyz.y,
+                    xyz.z
+                ));
+
+                for val in &entry.data.values {
+                    cgats.push_str(&format!("{:.6} ", val));
+                }
+                cgats.push('\n');
+            }
+
+            cgats.push_str("END_DATA\n");
+
+            if let Err(e) = std::fs::write(path, cgats) {
+                eprintln!("Failed to write CGATS: {}", e);
             }
         }
     }
@@ -821,6 +898,7 @@ impl SpectroApp {
                 ExpertTab::ColorQuality,
                 "🌈 Color Quality",
             );
+            ui.selectable_value(&mut self.expert_tab, ExpertTab::Trend, "📈 Trend");
         });
 
         ui.separator();
@@ -831,7 +909,50 @@ impl SpectroApp {
             ExpertTab::Algorithm => self.render_algorithm_tab(ui),
             ExpertTab::Chromaticity => self.render_chromaticity_tab(ui),
             ExpertTab::ColorQuality => self.render_color_quality_tab(ui),
+            ExpertTab::Trend => self.render_trend_tab(ui),
         }
+    }
+
+    fn render_trend_tab(&self, ui: &mut egui::Ui) {
+        ui.add_space(5.0);
+        ui.heading("📈 Measurement Trend");
+        ui.add_space(10.0);
+
+        if self.measurement_history.is_empty() {
+            ui.label("No data to display.");
+            return;
+        }
+
+        let plot = Plot::new("trend_plot")
+            .view_aspect(2.0)
+            .legend(Legend::default())
+            .y_axis_label("Value")
+            .x_axis_label("Samples (Newest to Oldest)");
+
+        plot.show(ui, |plot_ui| {
+            // L* Trend
+            let l_points: PlotPoints = self
+                .measurement_history
+                .iter()
+                .enumerate()
+                .map(|(i, e)| [i as f64, e.lab.l as f64])
+                .collect();
+            plot_ui.line(Line::new(l_points).name("L*").color(egui::Color32::WHITE));
+
+            // Delta E Trend (if reference exists)
+            if self.reference_lab.is_some() {
+                let de_points: PlotPoints = self
+                    .measurement_history
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, e)| e.delta_e.map(|de| [i as f64, de as f64]))
+                    .collect();
+                plot_ui.line(Line::new(de_points).name("ΔE*00").color(egui::Color32::RED));
+            }
+        });
+
+        ui.add_space(10.0);
+        ui.label("This chart shows the stability of measurements over time. Useful for monitoring light source warm-up or drift.");
     }
 
     fn render_device_info_tab(&self, ui: &mut egui::Ui) {
@@ -1290,6 +1411,17 @@ impl eframe::App for SpectroApp {
 
                     // Right-aligned controls
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        // Theme toggle
+                        if ui.button(self.theme_config.mode.label()).clicked() {
+                            self.theme_config.mode = self.theme_config.mode.next();
+                            let visuals = self.theme_config.to_visuals();
+                            ctx.set_visuals(visuals);
+                            // Persist the new theme choice
+                            let _ = self.theme_config.save("spectro_theme.json");
+                        }
+
+                        ui.separator();
+
                         // Expert mode toggle
                         let toggle_text = if self.is_expert_mode {
                             "🔬 Expert"
@@ -1305,6 +1437,13 @@ impl eframe::App for SpectroApp {
 
                         ui.separator();
 
+                        // Settings button
+                        if ui.button("⚙ Settings").clicked() {
+                            self.show_settings = !self.show_settings;
+                        }
+
+                        ui.separator();
+
                         // Status message
                         if self.is_busy {
                             ui.spinner();
@@ -1313,6 +1452,24 @@ impl eframe::App for SpectroApp {
                     });
                 });
             });
+
+        // === Handle continuous measurement ===
+        if self.is_continuous && self.is_connected && !self.is_busy {
+            let should_measure = match self.last_measurement_time {
+                None => true,
+                Some(last_time) => {
+                    last_time.elapsed() >= Duration::from_secs_f32(self.continuous_interval)
+                }
+            };
+
+            if should_measure {
+                self.cmd_tx
+                    .send(DeviceCommand::Measure(self.selected_mode))
+                    .ok();
+                self.last_measurement_time = Some(Instant::now());
+                self.is_busy = true;
+            }
+        }
 
         // === Bottom Panel: Action Bar ===
         egui::TopBottomPanel::bottom("bottom_panel")
@@ -1348,61 +1505,6 @@ impl eframe::App for SpectroApp {
                             );
                         });
 
-                    // Illuminant selector
-                    egui::ComboBox::from_id_salt("illuminant_selector")
-                        .selected_text(format!("{:?}", self.selected_illuminant))
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(
-                                &mut self.selected_illuminant,
-                                Illuminant::D65,
-                                "D65 (Daylight, sRGB)",
-                            );
-                            ui.selectable_value(
-                                &mut self.selected_illuminant,
-                                Illuminant::D50,
-                                "D50 (Print Industry)",
-                            );
-                            ui.selectable_value(
-                                &mut self.selected_illuminant,
-                                Illuminant::A,
-                                "A (Tungsten 2856K)",
-                            );
-                            ui.selectable_value(
-                                &mut self.selected_illuminant,
-                                Illuminant::F2,
-                                "F2 (Cool White Fluorescent)",
-                            );
-                            ui.selectable_value(
-                                &mut self.selected_illuminant,
-                                Illuminant::F7,
-                                "F7 (Daylight Fluorescent)",
-                            );
-                            ui.selectable_value(
-                                &mut self.selected_illuminant,
-                                Illuminant::F11,
-                                "F11 (TL84)",
-                            );
-                        });
-
-                    // Observer selector
-                    egui::ComboBox::from_id_salt("observer_selector")
-                        .selected_text(match self.selected_observer {
-                            Observer::CIE1931_2 => "2° (Standard)",
-                            Observer::CIE1964_10 => "10° (Supplementary)",
-                        })
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(
-                                &mut self.selected_observer,
-                                Observer::CIE1931_2,
-                                "2° (CIE 1931 Standard)",
-                            );
-                            ui.selectable_value(
-                                &mut self.selected_observer,
-                                Observer::CIE1964_10,
-                                "10° (CIE 1964 Large Field)",
-                            );
-                        });
-
                     ui.separator();
 
                     // Main action buttons
@@ -1424,6 +1526,32 @@ impl eframe::App for SpectroApp {
                     if cal_btn.clicked() {
                         self.is_busy = true;
                         self.cmd_tx.send(DeviceCommand::Calibrate).ok();
+                    }
+
+                    // Continuous measurement toggle
+                    let continuous_label = if self.is_continuous {
+                        "⏸️ Stop Loop"
+                    } else {
+                        "▶️ Continuous"
+                    };
+                    if ui
+                        .add_enabled(
+                            self.is_connected,
+                            egui::Button::new(continuous_label).min_size(egui::vec2(120.0, 30.0)),
+                        )
+                        .clicked()
+                    {
+                        self.is_continuous = !self.is_continuous;
+                        self.last_measurement_time = None;
+                    }
+
+                    // Continuous interval slider
+                    if self.is_continuous {
+                        ui.add(
+                            egui::Slider::new(&mut self.continuous_interval, 0.5..=5.0)
+                                .text("interval (s)")
+                                .step_by(0.1),
+                        );
                     }
 
                     // Reconnect button (only shown when disconnected)
@@ -1457,6 +1585,90 @@ impl eframe::App for SpectroApp {
                     });
                 });
             });
+
+        // === Settings Window ===
+        if self.show_settings {
+            egui::Window::new("⚙ Settings")
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.heading("Colorimetry Standards");
+                    ui.add_space(10.0);
+
+                    egui::Grid::new("settings_grid")
+                        .num_columns(2)
+                        .spacing([20.0, 10.0])
+                        .show(ui, |ui| {
+                            ui.label("Illuminant:");
+                            egui::ComboBox::from_id_salt("illuminant_selector_settings")
+                                .selected_text(format!("{:?}", self.selected_illuminant))
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(
+                                        &mut self.selected_illuminant,
+                                        Illuminant::D65,
+                                        "D65 (Daylight, sRGB)",
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.selected_illuminant,
+                                        Illuminant::D50,
+                                        "D50 (Print Industry)",
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.selected_illuminant,
+                                        Illuminant::A,
+                                        "A (Tungsten 2856K)",
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.selected_illuminant,
+                                        Illuminant::F2,
+                                        "F2 (Cool White Fluorescent)",
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.selected_illuminant,
+                                        Illuminant::F7,
+                                        "F7 (Daylight Fluorescent)",
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.selected_illuminant,
+                                        Illuminant::F11,
+                                        "F11 (TL84)",
+                                    );
+                                });
+                            ui.end_row();
+
+                            ui.label("Observer:");
+                            egui::ComboBox::from_id_salt("observer_selector_settings")
+                                .selected_text(match self.selected_observer {
+                                    Observer::CIE1931_2 => "2° (Standard)",
+                                    Observer::CIE1964_10 => "10° (Supplementary)",
+                                })
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(
+                                        &mut self.selected_observer,
+                                        Observer::CIE1931_2,
+                                        "2° (CIE 1931 Standard)",
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.selected_observer,
+                                        Observer::CIE1964_10,
+                                        "10° (CIE 1964 Large Field)",
+                                    );
+                                });
+                            ui.end_row();
+                        });
+
+                    ui.add_space(20.0);
+                    ui.separator();
+                    ui.add_space(10.0);
+
+                    ui.horizontal(|ui| {
+                        if ui.button("Close").clicked() {
+                            self.show_settings = false;
+                        }
+                    });
+                });
+        }
 
         // === Reference Input Window (Modal-like) ===
         if self.show_reference_input {
@@ -1593,7 +1805,7 @@ impl eframe::App for SpectroApp {
                                         };
                                         ui.colored_label(
                                             color,
-                                            egui::RichText::new(format!("ΔE={:.1}", de)).small(),
+                                            egui::RichText::new(format!("ΔE00={:.1}", de)).small(),
                                         );
                                     }
                                 });
@@ -1612,6 +1824,9 @@ impl eframe::App for SpectroApp {
                         }
                         if ui.button("JSON").clicked() {
                             self.export_history_json();
+                        }
+                        if ui.button("CGATS").clicked() {
+                            self.export_history_cgats();
                         }
                         if ui.button("Clear").clicked() {
                             self.measurement_history.clear();
@@ -1643,6 +1858,57 @@ impl eframe::App for SpectroApp {
                     self.render_expert_workspace(ui);
                 } else {
                     self.render_simple_workspace(ui);
+                }
+
+                // Calibration Guidance Overlay
+                if self.is_busy && self.status_msg.contains("Calibrating") {
+                    egui::Window::new("🎯 Calibration Guidance")
+                        .collapsible(false)
+                        .resizable(false)
+                        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                        .show(ctx, |ui| {
+                            ui.vertical_centered(|ui| {
+                                ui.add_space(10.0);
+                                ui.label(
+                                    egui::RichText::new("Please rotate the dial to:")
+                                        .size(18.0)
+                                        .strong(),
+                                );
+                                ui.add_space(10.0);
+
+                                // Visual representation of the dial
+                                let (rect, _) = ui.allocate_exact_size(
+                                    egui::vec2(120.0, 120.0),
+                                    egui::Sense::hover(),
+                                );
+                                let painter = ui.painter();
+                                let center = rect.center();
+                                let radius = 50.0;
+
+                                // Draw dial circle
+                                painter.circle_stroke(
+                                    center,
+                                    radius,
+                                    egui::Stroke::new(2.0, egui::Color32::GRAY),
+                                );
+
+                                // Draw "Calibrate" position (usually top or specific angle)
+                                let angle = -std::f32::consts::FRAC_PI_2; // Top
+                                let pos =
+                                    center + egui::vec2(angle.cos() * radius, angle.sin() * radius);
+                                painter.circle_filled(pos, 8.0, egui::Color32::YELLOW);
+
+                                ui.add_space(10.0);
+                                ui.label(
+                                    egui::RichText::new("CALIBRATE POSITION")
+                                        .color(egui::Color32::YELLOW)
+                                        .strong(),
+                                );
+                                ui.add_space(10.0);
+                                ui.label("Then place the device on the white tile.");
+                                ui.add_space(10.0);
+                            });
+                        });
                 }
             });
 

@@ -1,0 +1,149 @@
+/// Theme management system for spectro-gui.
+/// Supports light/dark mode switching with persistent storage.
+use egui::{Color32, Visuals};
+use serde::{Deserialize, Serialize};
+
+/// Available theme modes
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ThemeMode {
+    Light,
+    #[default]
+    Dark,
+    Auto, // System preference (future)
+}
+
+impl ThemeMode {
+    pub fn to_visuals(self) -> Visuals {
+        match self {
+            ThemeMode::Light => create_light_theme(),
+            ThemeMode::Dark => create_dark_theme(),
+            ThemeMode::Auto => create_dark_theme(), // Default to dark for now
+        }
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            ThemeMode::Light => "🌞 Light",
+            ThemeMode::Dark => "🌙 Dark",
+            ThemeMode::Auto => "🔄 Auto",
+        }
+    }
+
+    pub fn next(&self) -> Self {
+        match self {
+            ThemeMode::Light => ThemeMode::Dark,
+            ThemeMode::Dark => ThemeMode::Light,
+            ThemeMode::Auto => ThemeMode::Light,
+        }
+    }
+}
+
+/// Create light theme for spectro-gui
+fn create_light_theme() -> Visuals {
+    let mut visuals = Visuals::light();
+
+    // Customize for spectro measurement context
+    visuals.override_text_color = Some(Color32::from_rgb(40, 40, 40));
+
+    // Window styling
+    visuals.window_fill = Color32::from_rgb(250, 250, 250);
+    visuals.window_stroke.color = Color32::from_rgb(200, 200, 200);
+
+    // Panel styling
+    visuals.panel_fill = Color32::from_rgb(245, 245, 245);
+
+    // Button styling
+    visuals.widgets.inactive.bg_fill = Color32::from_rgb(230, 230, 230);
+    visuals.widgets.inactive.weak_bg_fill = Color32::from_rgb(220, 220, 220);
+
+    visuals.widgets.hovered.bg_fill = Color32::from_rgb(210, 210, 210);
+    visuals.widgets.active.bg_fill = Color32::from_rgb(100, 180, 255);
+
+    visuals
+}
+
+/// Create dark theme for spectro-gui (optimized for measurement environment)
+fn create_dark_theme() -> Visuals {
+    let mut visuals = Visuals::dark();
+
+    // Professional dark color scheme for spectrophotometry
+    visuals.window_fill = Color32::from_rgb(32, 32, 32);
+    visuals.window_stroke.color = Color32::from_rgb(80, 80, 80);
+
+    // Panel with subtle tint
+    visuals.panel_fill = Color32::from_rgb(40, 40, 40);
+
+    // Button colors
+    visuals.widgets.inactive.bg_fill = Color32::from_rgb(60, 60, 60);
+    visuals.widgets.inactive.weak_bg_fill = Color32::from_rgb(50, 50, 50);
+
+    visuals.widgets.hovered.bg_fill = Color32::from_rgb(80, 80, 80);
+    visuals.widgets.active.bg_fill = Color32::from_rgb(100, 150, 220);
+
+    // Text
+    visuals.override_text_color = Some(Color32::from_rgb(240, 240, 240));
+
+    visuals
+}
+
+/// Theme configuration with persistence
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThemeConfig {
+    pub mode: ThemeMode,
+}
+
+impl Default for ThemeConfig {
+    fn default() -> Self {
+        ThemeConfig {
+            mode: ThemeMode::Dark,
+        }
+    }
+}
+
+impl ThemeConfig {
+    /// Load theme from config file
+    pub fn load_or_default(config_path: &str) -> Self {
+        std::fs::read_to_string(config_path)
+            .ok()
+            .and_then(|content| serde_json::from_str::<ThemeConfig>(&content).ok())
+            .unwrap_or_default()
+    }
+
+    /// Save theme to config file
+    pub fn save(&self, config_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let json = serde_json::to_string_pretty(self)?;
+        std::fs::write(config_path, json)?;
+        Ok(())
+    }
+
+    /// Get current visuals
+    pub fn to_visuals(&self) -> Visuals {
+        self.mode.to_visuals()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_theme_mode_cycling() {
+        let mut mode = ThemeMode::Light;
+        mode = mode.next();
+        assert_eq!(mode, ThemeMode::Dark);
+        mode = mode.next();
+        assert_eq!(mode, ThemeMode::Light);
+    }
+
+    #[test]
+    fn test_theme_persistence() {
+        let config = ThemeConfig {
+            mode: ThemeMode::Light,
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+        let deserialized: ThemeConfig = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(config.mode, deserialized.mode);
+    }
+}
