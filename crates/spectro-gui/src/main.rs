@@ -1,4 +1,5 @@
 mod app;
+mod tm30_gui;
 
 use eframe::egui;
 use spectro_rs::Result;

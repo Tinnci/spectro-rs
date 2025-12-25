@@ -20,6 +20,11 @@ pub struct TM30Metrics {
     pub bin_rf: [f32; 16],
     pub bin_chroma_shift: [f32; 16],
     pub bin_hue_shift: [f32; 16],
+    pub bin_test_a: [f32; 16],
+    pub bin_test_b: [f32; 16],
+    pub bin_ref_a: [f32; 16],
+    pub bin_ref_b: [f32; 16],
+    pub ces_rgb: Vec<[u8; 3]>,
 }
 
 /// Calculate IES TM-30-18 metrics (Rf and Rg).
@@ -53,6 +58,7 @@ pub fn calculate_tm30(test_spd: &SpectralData) -> TM30Metrics {
     // 5. Calculate XYZ for 99 CES samples under both sources
     let mut test_ucs = Vec::with_capacity(99);
     let mut ref_ucs = Vec::with_capacity(99);
+    let mut ces_rgb = Vec::with_capacity(99);
 
     let vc_test = ViewingConditions::new(test_white, 100.0, 20.0, Surround::AVERAGE);
     let cam_test = Cam02State::new(&vc_test);
@@ -72,6 +78,10 @@ pub fn calculate_tm30(test_spd: &SpectralData) -> TM30Metrics {
             y: test_xyz_raw.y * 100.0 / test_white_raw.y,
             z: test_xyz_raw.z * 100.0 / test_white_raw.y,
         };
+
+        // Convert to sRGB for preview (normalize to white point)
+        let (r, g, b) = test_xyz.to_srgb_safe(test_white);
+        ces_rgb.push([r, g, b]);
 
         // Reference source XYZ
         let mut ref_sample_vals = [0.0f32; 95];
@@ -164,6 +174,11 @@ pub fn calculate_tm30(test_spd: &SpectralData) -> TM30Metrics {
         bin_rf,
         bin_chroma_shift,
         bin_hue_shift,
+        bin_test_a,
+        bin_test_b,
+        bin_ref_a,
+        bin_ref_b,
+        ces_rgb,
     }
 }
 

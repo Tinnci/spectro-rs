@@ -11,7 +11,9 @@ use eframe::egui;
 use egui_plot::{HLine, Legend, Line, Plot, PlotPoints, Points, VLine};
 use spectro_rs::{
     colorimetry::{illuminant, Lab, XYZ, X_BAR_2, Y_BAR_2, Z_BAR_2},
-    discover, BoxedSpectrometer, DeviceInfo, Illuminant, MeasurementMode, Observer, SpectralData,
+    discover,
+    tm30::{calculate_tm30, TM30Metrics},
+    BoxedSpectrometer, DeviceInfo, Illuminant, MeasurementMode, Observer, SpectralData,
 };
 use std::thread;
 
@@ -63,7 +65,7 @@ enum DeviceCommand {
 enum UIUpdate {
     Connected(ExtendedDeviceInfo),
     Status(String),
-    Result(SpectralData),
+    Result(SpectralData, Option<Box<TM30Metrics>>),
     Error(String),
     Disconnected,
 }
@@ -87,6 +89,7 @@ pub struct SpectroApp {
     // Measurement State
     selected_mode: MeasurementMode,
     last_result: Option<SpectralData>,
+    last_tm30: Option<TM30Metrics>,
     measurement_history: Vec<MeasurementEntry>,
 
     // Reference/Standard for comparison
@@ -115,6 +118,7 @@ enum ExpertTab {
     DeviceInfo,
     Algorithm,
     Chromaticity,
+    ColorQuality,
 }
 
 // ============================================================================
@@ -217,7 +221,12 @@ impl SpectroApp {
 
                             match d.measure(mode) {
                                 Ok(data) => {
-                                    update_tx.send(UIUpdate::Result(data)).ok();
+                                    let tm30 = if mode == MeasurementMode::Emissive {
+                                        Some(Box::new(calculate_tm30(&data)))
+                                    } else {
+                                        None
+                                    };
+                                    update_tx.send(UIUpdate::Result(data, tm30)).ok();
                                     update_tx
                                         .send(UIUpdate::Status("✅ Measurement complete".into()))
                                         .ok();
@@ -260,6 +269,7 @@ impl SpectroApp {
             is_calibrated: false,
             selected_mode: MeasurementMode::Reflective,
             last_result: None,
+            last_tm30: None,
             measurement_history: Vec::new(),
             reference_lab: None,
             delta_e_tolerance: 2.0,
@@ -792,6 +802,11 @@ impl SpectroApp {
                 ExpertTab::Chromaticity,
                 "🎯 xy Diagram",
             );
+            ui.selectable_value(
+                &mut self.expert_tab,
+                ExpertTab::ColorQuality,
+                "🌈 Color Quality",
+            );
         });
 
         ui.separator();
@@ -801,6 +816,7 @@ impl SpectroApp {
             ExpertTab::RawSensor => self.render_raw_sensor_tab(ui),
             ExpertTab::Algorithm => self.render_algorithm_tab(ui),
             ExpertTab::Chromaticity => self.render_chromaticity_tab(ui),
+            ExpertTab::ColorQuality => self.render_color_quality_tab(ui),
         }
     }
 
@@ -1176,6 +1192,23 @@ impl SpectroApp {
         ui.add_space(10.0);
         ui.label("The horseshoe-shaped region represents all colors visible to the human eye. The red dot indicates the most recent measurement.");
     }
+
+    fn render_color_quality_tab(&self, ui: &mut egui::Ui) {
+        ui.add_space(5.0);
+        ui.heading("🌈 IES TM-30-18 Color Quality");
+        ui.add_space(10.0);
+
+        if let Some(metrics) = &self.last_tm30 {
+            let visualizer = crate::tm30_gui::Tm30Visualizer::new(metrics.clone());
+            visualizer.ui(ui);
+        } else {
+            ui.vertical_centered(|ui| {
+                ui.add_space(50.0);
+                ui.label("No TM-30 data available.");
+                ui.label("Please take an Emissive measurement to see color quality metrics.");
+            });
+        }
+    }
 }
 
 // ============================================================================
@@ -1199,9 +1232,10 @@ impl eframe::App for SpectroApp {
                     self.status_msg = msg;
                     self.is_busy = false;
                 }
-                UIUpdate::Result(data) => {
+                UIUpdate::Result(data, tm30) => {
                     self.add_to_history(data.clone());
                     self.last_result = Some(data);
+                    self.last_tm30 = tm30.map(|b| *b);
                     self.is_busy = false;
                 }
                 UIUpdate::Error(err) => {
