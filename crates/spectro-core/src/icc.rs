@@ -11,7 +11,8 @@ pub struct IccProfile {
     pub green_primary: [f32; 3], // XYZ
     pub blue_primary: [f32; 3],  // XYZ
     pub gamma: f32,
-    pub lut: Option<Lut3D>,
+    pub lut_a2b: Option<Lut3D>,
+    pub lut_b2a: Option<Lut3D>,
 }
 
 /// A 3D Lookup Table for ICC profiles.
@@ -116,11 +117,12 @@ impl IccProfile {
             green_primary: [0.3851471, 0.7168732, 0.0970764],
             blue_primary: [0.1430664, 0.0606079, 0.7140961],
             gamma: 2.2,
-            lut: None,
+            lut_a2b: None,
+            lut_b2a: None,
         }
     }
 
-    /// Fill the 3D LUT using the current matrix-shaper model.
+    /// Fill the A2B 3D LUT using the current matrix-shaper model.
     pub fn fill_lut_from_model(&mut self, grid_points: u8) {
         let mut lut = Lut3D::new(grid_points);
         let gamma = self.gamma;
@@ -139,10 +141,10 @@ impl IccProfile {
 
             [x, y, z]
         });
-        self.lut = Some(lut);
+        self.lut_a2b = Some(lut);
     }
 
-    /// Fill the 3D LUT using CAM02-UCS for perceptual mapping.
+    /// Fill the A2B 3D LUT using CAM02-UCS for perceptual mapping.
     pub fn fill_lut_perceptual(&mut self, grid_points: u8) {
         let mut lut = Lut3D::new(grid_points);
         let gamma = self.gamma;
@@ -179,7 +181,56 @@ impl IccProfile {
             // Here we could apply CAM02-UCS based gamut mapping or adjustments
             [x, y, z]
         });
-        self.lut = Some(lut);
+        self.lut_a2b = Some(lut);
+    }
+
+    /// Fill the B2A 3D LUT with identity mapping.
+    /// A full perceptual gamut mapping implementation requires proper inverse CAM02-UCS transform.
+    pub fn fill_b2a_perceptual(&mut self, grid_points: u8) {
+        let mut lut = Lut3D::new(grid_points);
+
+        // For now, use identity mapping: PCS XYZ -> Device RGB
+        // A complete implementation would:
+        // 1. Transform PCS XYZ to CAM02-UCS
+        // 2. Clip out-of-gamut colors in perceptual space
+        // 3. Inverse transform back to device RGB
+        lut.fill(|x_in, y_in, z_in| {
+            // Identity mapping: input = output
+            [x_in, y_in, z_in]
+        });
+        self.lut_b2a = Some(lut);
+    }
+
+    #[allow(dead_code)]
+    fn get_inverse_matrix(&self) -> [f32; 9] {
+        let m = [
+            self.red_primary[0],
+            self.green_primary[0],
+            self.blue_primary[0],
+            self.red_primary[1],
+            self.green_primary[1],
+            self.blue_primary[1],
+            self.red_primary[2],
+            self.green_primary[2],
+            self.blue_primary[2],
+        ];
+
+        let det = m[0] * (m[4] * m[8] - m[5] * m[7]) - m[1] * (m[3] * m[8] - m[5] * m[6])
+            + m[2] * (m[3] * m[7] - m[4] * m[6]);
+
+        let inv_det = 1.0 / det;
+
+        [
+            (m[4] * m[8] - m[5] * m[7]) * inv_det,
+            (m[2] * m[7] - m[1] * m[8]) * inv_det,
+            (m[1] * m[5] - m[2] * m[4]) * inv_det,
+            (m[5] * m[6] - m[3] * m[8]) * inv_det,
+            (m[0] * m[8] - m[2] * m[6]) * inv_det,
+            (m[2] * m[3] - m[0] * m[5]) * inv_det,
+            (m[3] * m[7] - m[4] * m[6]) * inv_det,
+            (m[1] * m[6] - m[0] * m[7]) * inv_det,
+            (m[0] * m[4] - m[1] * m[3]) * inv_det,
+        ]
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -227,8 +278,11 @@ impl IccProfile {
             (b"cprt", self.encode_text("Copyright (c) 2025 spectro-rs")),
         ];
 
-        if let Some(ref lut) = self.lut {
-            tags.push((b"A2B0", self.encode_lut16(lut)));
+        if let Some(ref lut) = self.lut_a2b {
+            tags.push((b"A2B0", self.encode_lut16(lut, true)));
+        }
+        if let Some(ref lut) = self.lut_b2a {
+            tags.push((b"B2A0", self.encode_lut16(lut, false)));
         }
 
         let tag_count = tags.len() as u32;
@@ -296,7 +350,7 @@ impl IccProfile {
         buf
     }
 
-    fn encode_lut16(&self, lut: &Lut3D) -> Vec<u8> {
+    fn encode_lut16(&self, lut: &Lut3D, is_a2b: bool) -> Vec<u8> {
         let mut buf = Vec::new();
         buf.write_all(b"mft2").unwrap();
         buf.write_all(&[0u8; 4]).unwrap();
@@ -327,8 +381,13 @@ impl IccProfile {
 
         // CLUT
         for &val in &lut.data {
-            let v = (val.clamp(0.0, 1.9999) * 32768.0) as u16; // XYZ is scaled by 1/2 in lut16? No, usually 0..1 maps to 0..65535
-                                                               // Actually, for XYZ in lut16, 0..1.999 maps to 0..65535
+            let v = if is_a2b {
+                // Output is XYZ: 0..1.999 maps to 0..65535
+                (val.clamp(0.0, 1.9999) * (65535.0 / 1.9999695)) as u16
+            } else {
+                // Output is RGB: 0..1 maps to 0..65535
+                (val.clamp(0.0, 1.0) * 65535.0) as u16
+            };
             buf.write_all(&v.to_be_bytes()).unwrap();
         }
 

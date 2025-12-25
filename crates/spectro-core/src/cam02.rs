@@ -141,6 +141,7 @@ pub struct Cam02State {
     z: f32,
     rgb_w: [f32; 3],
     d: f32,
+    aw: f32,
 }
 
 impl Cam02State {
@@ -172,6 +173,24 @@ impl Cam02State {
 
         let d = (f * (1.0 - (1.0 / 3.6) * ((-la - 42.0) / 92.0).exp())).clamp(0.0, 1.0);
 
+        let mut rgb_cw = [0.0f32; 3];
+        for i in 0..3 {
+            rgb_cw[i] = rgb_w[i] * (d * (100.0 / rgb_w[i]) + 1.0 - d);
+        }
+
+        let rgb_pw = [
+            0.7409792 * rgb_cw[0] + 0.218025 * rgb_cw[1] + 0.041 * rgb_cw[2],
+            0.2853532 * rgb_cw[0] + 0.6242014 * rgb_cw[1] + 0.0904454 * rgb_cw[2],
+            -0.009628 * rgb_cw[0] - 0.005698 * rgb_cw[1] + 1.015326 * rgb_cw[2],
+        ];
+
+        let mut rgb_aw = [0.0f32; 3];
+        for i in 0..3 {
+            let val = (fl * rgb_pw[i].abs() / 100.0).powf(0.42);
+            rgb_aw[i] = (400.0 * val) / (val + 27.13) + 0.1;
+        }
+        let aw = (2.0 * rgb_aw[0] + rgb_aw[1] + 0.05 * rgb_aw[2] - 0.305) * nbb;
+
         Self {
             c: *c,
             nc: *nc,
@@ -181,6 +200,7 @@ impl Cam02State {
             z,
             rgb_w,
             d,
+            aw,
         }
     }
 
@@ -210,10 +230,8 @@ impl Cam02State {
         let mut rgb_a = [0.0f32; 3];
         for i in 0..3 {
             let val = (self.fl * rgb_p[i].abs() / 100.0).powf(0.42);
-            rgb_a[i] = (400.0 * val) / (val + 27.13) + 0.1;
-            if rgb_p[i] < 0.0 {
-                rgb_a[i] = -rgb_a[i];
-            }
+            let res = (400.0 * val) / (val + 27.13);
+            rgb_a[i] = if rgb_p[i] < 0.0 { -res } else { res } + 0.1;
         }
 
         // Step 4: Appearance correlates
@@ -224,11 +242,7 @@ impl Cam02State {
         let et = 0.25 * ((h_rad + 2.0).cos() + 3.8);
         let ac = (2.0 * rgb_a[0] + rgb_a[1] + 0.05 * rgb_a[2] - 0.305) * self.nbb;
 
-        let j = 100.0
-            * (ac
-                / ((2.0 * self.rgb_w[0] + self.rgb_w[1] + 0.05 * self.rgb_w[2] - 0.305)
-                    * self.nbb))
-                .powf(self.c * self.z);
+        let j = (100.0 * (ac / self.aw).powf(self.c * self.z)).clamp(0.0, 100.0);
 
         let t = (50000.0 / 13.0) * self.nc * self.ncb * et * (a * a + b * b).sqrt()
             / (rgb_a[0] + rgb_a[1] + 1.05 * rgb_a[2]);
@@ -236,7 +250,7 @@ impl Cam02State {
 
         // Step 5: CAM02-UCS scaling (Luo et al. 2006)
         // Using the UCS (Uniform Color Space) coefficients
-        let kl = 1.00;
+        let kl = 1.0;
         let c1 = 0.007;
         let c2 = 0.0228;
 
@@ -254,5 +268,105 @@ impl Cam02State {
             a_prime,
             b_prime,
         }
+    }
+
+    pub fn ucs_to_xyz(&self, ucs: Cam02Ucs) -> XYZ {
+        let kl = 1.00;
+        let c1 = 0.007;
+        let c2 = 0.0228;
+
+        let j_prime = ucs.j_prime * kl;
+        let j = j_prime / (1.0 + c1 * (100.0 - j_prime));
+
+        let m_prime = (ucs.a_prime * ucs.a_prime + ucs.b_prime * ucs.b_prime).sqrt();
+        let m = (m_prime * c2).exp_m1() / c2;
+        let h_rad = ucs.b_prime.atan2(ucs.a_prime);
+
+        let c = m / self.fl.powf(0.25);
+        let t =
+            (c / ((j / 100.0).sqrt() * (1.64 - 0.29f32.powf(self.nbb)).powf(0.73))).powf(1.0 / 0.9);
+        let et = 0.25 * ((h_rad + 2.0).cos() + 3.8);
+
+        let ac = self.aw * (j / 100.0).powf(1.0 / (self.c * self.z));
+
+        let p1 = (50000.0 / 13.0) * self.nc * self.ncb * et;
+        let p2 = (ac / self.nbb + 0.305) / 3.05;
+        let p3 = p1 / t;
+
+        let (a, b) = if t.abs() < 1e-6 {
+            (0.0, 0.0)
+        } else {
+            let cos_h = h_rad.cos();
+            let sin_h = h_rad.sin();
+            let p4 = p3 * cos_h;
+            let p5 = p3 * sin_h;
+            let d = (23.0 * (p2 + 0.305) * p3) / (23.0 * p4 + 11.0 * p5 + 108.0);
+            let a = d * cos_h;
+            let b = d * sin_h;
+            (a, b)
+        };
+
+        let mut rgb_a = [0.0f32; 3];
+        rgb_a[0] = p2 + (460.0 / 1403.0) * a + (451.0 / 1403.0) * b;
+        rgb_a[1] = p2 - (705.0 / 1403.0) * a - (236.0 / 1403.0) * b;
+        rgb_a[2] = p2 - (220.0 / 1403.0) * a - (6300.0 / 1403.0) * b;
+
+        let mut rgb_p = [0.0f32; 3];
+        for i in 0..3 {
+            let val = rgb_a[i] - 0.1;
+            let sign = if val < 0.0 { -1.0 } else { 1.0 };
+            rgb_p[i] = sign
+                * (100.0 / self.fl)
+                * ((27.13 * val.abs()) / (400.0 - val.abs())).powf(1.0 / 0.42);
+        }
+
+        // HPE to CAT02
+        let rgb_c = [
+            1.8620678 * rgb_p[0] - 1.0112547 * rgb_p[1] + 0.1491868 * rgb_p[2],
+            0.3875265 * rgb_p[0] + 0.6214474 * rgb_p[1] - 0.0089739 * rgb_p[2],
+            -0.0158415 * rgb_p[0] - 0.0341229 * rgb_p[1] + 1.0499644 * rgb_p[2],
+        ];
+
+        let mut rgb = [0.0f32; 3];
+        for i in 0..3 {
+            let factor = self.d * (100.0 / self.rgb_w[i]) + 1.0 - self.d;
+            rgb[i] = rgb_c[i] / factor;
+        }
+
+        // Inverse CAT02 matrix
+        let x = 1.096_124 * rgb[0] - 0.278_869 * rgb[1] + 0.182_745 * rgb[2];
+        let y = 0.454_369 * rgb[0] + 0.473_531 * rgb[1] + 0.072_100 * rgb[2];
+        let z = -0.0096276 * rgb[0] - 0.0056980 * rgb[1] + 1.0153256 * rgb[2];
+
+        XYZ { x, y, z }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::colorimetry::XYZ;
+
+    #[test]
+    fn test_cam02_ucs_forward() {
+        let wp = XYZ {
+            x: 0.95047,
+            y: 1.0,
+            z: 1.08883,
+        }; // D65
+        let vc = ViewingConditions::new(wp, 100.0, 20.0, Surround::AVERAGE);
+        let cam = Cam02State::new(&vc);
+
+        let xyz = XYZ {
+            x: 20.0,
+            y: 30.0,
+            z: 40.0,
+        };
+        let ucs = cam.xyz_to_ucs(xyz);
+
+        // Verify UCS values are finite and within reasonable bounds
+        assert!(ucs.j_prime >= 0.0);
+        assert!(ucs.a_prime.is_finite());
+        assert!(ucs.b_prime.is_finite());
     }
 }
