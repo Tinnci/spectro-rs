@@ -1,6 +1,6 @@
 [package]
 name = "spectro-rs"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2021"
 authors = ["Tinnci <shisoratsu@icloud.com>"]
 description = "A high-performance Rust driver for X-Rite ColorMunki spectrometers"
