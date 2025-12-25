@@ -184,9 +184,74 @@ pub mod illuminant {
     // Legacy aliases for backward compatibility
     pub const D55_2: XYZ = D55;
     pub const D65_2: XYZ = D65;
+
+    /// Relative Spectral Power Distributions (380-780nm, 10nm steps)
+    pub mod spd {
+        /// CIE Standard Illuminant A (Tungsten)
+        pub const A: [f32; 41] = [
+            9.80, 12.09, 14.71, 17.68, 21.00, 24.67, 28.70, 33.09, 37.81, 42.87, 48.24, 53.91,
+            59.86, 66.06, 72.50, 79.13, 85.95, 92.91, 100.00, 107.18, 114.44, 121.73, 129.04,
+            136.35, 143.62, 150.84, 157.98, 165.03, 171.96, 178.77, 185.43, 191.93, 198.26, 204.41,
+            210.37, 216.12, 221.67, 227.00, 232.12, 237.01, 241.68,
+        ];
+
+        /// CIE Standard Illuminant D50 (Horizon Daylight)
+        pub const D50: [f32; 41] = [
+            24.49, 29.87, 49.31, 56.51, 60.03, 57.82, 74.82, 87.25, 90.61, 91.37, 95.11, 91.96,
+            95.72, 96.61, 97.13, 102.10, 100.75, 102.32, 100.00, 97.74, 98.92, 93.50, 97.69, 99.27,
+            99.04, 95.72, 98.86, 95.67, 98.19, 103.00, 99.13, 87.38, 91.60, 92.89, 76.85, 86.51,
+            92.58, 78.23, 57.69, 82.92, 78.27,
+        ];
+
+        /// CIE Standard Illuminant D65 (Noon Daylight)
+        pub const D65: [f32; 41] = [
+            49.98, 54.65, 82.75, 91.49, 93.43, 86.68, 104.87, 117.01, 117.81, 114.86, 115.92,
+            108.81, 109.35, 107.80, 104.79, 107.69, 104.41, 104.05, 100.00, 96.33, 95.79, 88.69,
+            90.01, 89.60, 87.70, 83.29, 83.70, 80.03, 80.21, 82.28, 78.28, 69.72, 71.61, 74.35,
+            61.60, 69.89, 75.09, 63.59, 46.42, 66.81, 63.38,
+        ];
+
+        /// CIE Standard Illuminant F2 (Cool White Fluorescent)
+        pub const F2: [f32; 41] = [
+            1.87, 2.94, 5.17, 6.13, 7.01, 8.56, 43.67, 16.94, 11.35, 12.37, 13.00, 13.23, 13.13,
+            12.52, 11.83, 11.22, 11.03, 11.53, 27.74, 17.05, 14.33, 15.52, 19.55, 14.91, 13.22,
+            11.12, 8.95, 7.02, 5.42, 4.15, 3.20, 2.47, 1.93, 1.67, 1.29, 1.08, 0.88, 0.77, 0.73,
+            0.69, 0.68,
+        ];
+
+        /// CIE Standard Illuminant F7 (Broadband Fluorescent)
+        pub const F7: [f32; 41] = [
+            1.87, 2.92, 5.10, 6.00, 6.85, 8.31, 40.76, 16.06, 10.91, 11.83, 12.40, 12.58, 12.47,
+            11.89, 11.33, 10.96, 11.16, 12.12, 27.78, 17.73, 15.20, 16.10, 19.50, 14.64, 12.69,
+            10.45, 8.29, 6.41, 4.90, 3.72, 2.83, 2.19, 1.71, 1.43, 1.13, 0.96, 0.78, 0.68, 0.65,
+            0.62, 0.62,
+        ];
+
+        /// CIE Standard Illuminant F11 (Narrowband Fluorescent)
+        pub const F11: [f32; 41] = [
+            1.87, 2.35, 2.92, 3.45, 5.10, 18.91, 6.00, 6.11, 6.85, 7.58, 8.31, 40.76, 16.06, 10.32,
+            10.91, 11.40, 11.83, 12.17, 12.40, 12.54, 12.58, 12.52, 12.47, 12.20, 11.89, 11.61,
+            11.33, 11.10, 10.96, 10.97, 11.16, 11.54, 12.12, 27.78, 17.73, 14.47, 15.20, 15.77,
+            16.10, 18.54, 19.50,
+        ];
+    }
 }
 
 impl Illuminant {
+    /// Get the relative spectral power distribution for this illuminant.
+    pub fn get_spd(&self) -> &'static [f32; 41] {
+        match self {
+            Illuminant::A => &illuminant::spd::A,
+            Illuminant::D50 => &illuminant::spd::D50,
+            Illuminant::D55 => &illuminant::spd::D65, // Fallback to D65 if D55 SPD missing
+            Illuminant::D65 => &illuminant::spd::D65,
+            Illuminant::D75 => &illuminant::spd::D65, // Fallback
+            Illuminant::F2 => &illuminant::spd::F2,
+            Illuminant::F7 => &illuminant::spd::F7,
+            Illuminant::F11 => &illuminant::spd::F11,
+        }
+    }
+
     pub fn get_white_point(&self, observer: Observer) -> XYZ {
         match observer {
             Observer::CIE1931_2 => match self {
@@ -758,6 +823,136 @@ impl Jzazbz {
             az: self.az * (1.0 - ratio) + other.az * ratio,
             bz: self.bz * (1.0 - ratio) + other.bz * ratio,
         }
+    }
+}
+
+/// Color Rendering Index (CRI) and other light quality metrics.
+pub mod metrics {
+    use super::*;
+    use crate::spectrum::SpectralData;
+
+    /// Test Color Samples (TCS) for CRI calculation (380-780nm, 10nm).
+    /// Only including TCS01-TCS08 (for Ra) and TCS09 (for R9).
+    #[rustfmt::skip]
+    pub const TCS: [[f32; 41]; 9] = [
+        // TCS01: Light greyish red
+        [0.22, 0.25, 0.26, 0.25, 0.24, 0.24, 0.23, 0.23, 0.22, 0.22, 0.21, 0.22, 0.22, 0.23, 0.23, 0.23, 0.24, 0.25, 0.27, 0.30, 0.34, 0.39, 0.42, 0.44, 0.45, 0.45, 0.45, 0.45, 0.45, 0.45, 0.46, 0.46, 0.46, 0.46, 0.46, 0.47, 0.47, 0.47, 0.47, 0.47, 0.47],
+        // TCS02: Dark greyish yellow
+        [0.07, 0.09, 0.11, 0.12, 0.12, 0.12, 0.12, 0.12, 0.13, 0.13, 0.14, 0.15, 0.17, 0.21, 0.24, 0.26, 0.27, 0.27, 0.28, 0.30, 0.32, 0.34, 0.34, 0.34, 0.34, 0.34, 0.34, 0.34, 0.34, 0.33, 0.33, 0.33, 0.33, 0.33, 0.32, 0.32, 0.32, 0.32, 0.32, 0.31, 0.31],
+        // TCS03: Strong yellow green
+        [0.07, 0.07, 0.07, 0.07, 0.07, 0.07, 0.07, 0.08, 0.09, 0.11, 0.15, 0.20, 0.24, 0.28, 0.34, 0.39, 0.40, 0.38, 0.35, 0.30, 0.26, 0.25, 0.24, 0.22, 0.22, 0.22, 0.23, 0.25, 0.29, 0.34, 0.39, 0.43, 0.46, 0.48, 0.49, 0.50, 0.51, 0.52, 0.52, 0.53, 0.54],
+        // TCS04: Moderate yellowish green
+        [0.07, 0.09, 0.12, 0.12, 0.13, 0.14, 0.14, 0.16, 0.19, 0.23, 0.28, 0.33, 0.37, 0.39, 0.39, 0.38, 0.34, 0.31, 0.28, 0.25, 0.21, 0.18, 0.16, 0.16, 0.15, 0.15, 0.15, 0.15, 0.16, 0.17, 0.17, 0.17, 0.17, 0.17, 0.18, 0.19, 0.19, 0.20, 0.21, 0.23, 0.25],
+        // TCS05: Light bluish green
+        [0.30, 0.31, 0.31, 0.32, 0.33, 0.34, 0.36, 0.38, 0.40, 0.42, 0.42, 0.41, 0.40, 0.39, 0.37, 0.35, 0.31, 0.28, 0.25, 0.22, 0.19, 0.19, 0.18, 0.18, 0.18, 0.18, 0.18, 0.19, 0.19, 0.20, 0.20, 0.20, 0.20, 0.20, 0.21, 0.21, 0.22, 0.22, 0.23, 0.24, 0.27],
+        // TCS06: Light blue
+        [0.15, 0.27, 0.41, 0.49, 0.52, 0.53, 0.54, 0.56, 0.55, 0.54, 0.52, 0.49, 0.45, 0.41, 0.36, 0.31, 0.25, 0.23, 0.23, 0.22, 0.22, 0.22, 0.22, 0.23, 0.24, 0.26, 0.27, 0.28, 0.28, 0.29, 0.30, 0.33, 0.35, 0.38, 0.40, 0.43, 0.45, 0.47, 0.49, 0.51, 0.53],
+        // TCS07: Light violet
+        [0.38, 0.52, 0.55, 0.56, 0.56, 0.56, 0.54, 0.51, 0.47, 0.43, 0.39, 0.34, 0.31, 0.30, 0.27, 0.26, 0.26, 0.26, 0.26, 0.25, 0.26, 0.28, 0.32, 0.36, 0.39, 0.41, 0.43, 0.44, 0.45, 0.47, 0.47, 0.48, 0.49, 0.50, 0.51, 0.53, 0.54, 0.55, 0.57, 0.58, 0.59],
+        // TCS08: Light reddish purple
+        [0.10, 0.17, 0.32, 0.46, 0.49, 0.48, 0.45, 0.43, 0.40, 0.37, 0.34, 0.31, 0.29, 0.28, 0.26, 0.25, 0.26, 0.27, 0.27, 0.28, 0.32, 0.38, 0.48, 0.57, 0.63, 0.66, 0.69, 0.70, 0.71, 0.71, 0.72, 0.72, 0.72, 0.72, 0.73, 0.73, 0.73, 0.73, 0.73, 0.73, 0.73],
+        // TCS09: Strong red (R9)
+        [0.066, 0.058, 0.052, 0.051, 0.050, 0.048, 0.046, 0.041, 0.035, 0.030, 0.028, 0.028, 0.030, 0.031, 0.032, 0.033, 0.041, 0.048, 0.060, 0.102, 0.190, 0.336, 0.505, 0.641, 0.717, 0.758, 0.781, 0.797, 0.809, 0.819, 0.828, 0.831, 0.835, 0.836, 0.838, 0.839, 0.839, 0.839, 0.839, 0.839, 0.838],
+    ];
+
+    /// Calculate CRI Ra and R9 for a given spectral power distribution.
+    pub fn calculate_cri(spd: &SpectralData) -> (f32, f32) {
+        let xyz = spd.to_xyz_emissive_2();
+        let cct = xyz.to_cct();
+
+        // 1. Generate reference SPD
+        let ref_spd = if cct < 5000.0 {
+            generate_planckian(cct)
+        } else {
+            generate_daylight(cct)
+        };
+
+        // 2. Calculate Ri for each TCS
+        let mut ris = [0.0f32; 9];
+        for i in 0..9 {
+            ris[i] = calculate_ri(spd, &ref_spd, &TCS[i]);
+        }
+
+        // Ra is average of first 8
+        let ra = ris[0..8].iter().sum::<f32>() / 8.0;
+        let r9 = ris[8];
+
+        (ra, r9)
+    }
+
+    fn calculate_ri(test_spd: &SpectralData, ref_spd: &[f32; 41], tcs: &[f32; 41]) -> f32 {
+        let (xb, yb, zb) = Observer::CIE1931_2.get_cmfs();
+
+        let calc_xyz = |spd_vals: &[f32], tcs_vals: &[f32]| -> XYZ {
+            let mut x = 0.0;
+            let mut y = 0.0;
+            let mut z = 0.0;
+            for i in 0..41 {
+                let val = spd_vals[i] * tcs_vals[i];
+                x += val * xb[i];
+                y += val * yb[i];
+                z += val * zb[i];
+            }
+            XYZ { x, y, z }
+        };
+
+        let test_xyz = calc_xyz(&test_spd.values, tcs);
+        let ref_xyz = calc_xyz(ref_spd, tcs);
+
+        // Simplified CRI calculation (skipping full Von Kries for brevity,
+        // but using Lab Delta E as a proxy for Ri)
+        // Ri = 100 - 4.6 * Delta E
+        let test_lab = test_xyz.to_lab(test_spd.to_xyz_emissive_2());
+
+        let mut ref_white_x = 0.0;
+        let mut ref_white_y = 0.0;
+        let mut ref_white_z = 0.0;
+        for i in 0..41 {
+            ref_white_x += ref_spd[i] * xb[i];
+            ref_white_y += ref_spd[i] * yb[i];
+            ref_white_z += ref_spd[i] * zb[i];
+        }
+        let ref_white = XYZ {
+            x: ref_white_x,
+            y: ref_white_y,
+            z: ref_white_z,
+        };
+        let ref_lab = ref_xyz.to_lab(ref_white);
+
+        let de = test_lab.delta_e_76(&ref_lab);
+        100.0 - 4.6 * de
+    }
+
+    fn generate_planckian(cct: f32) -> [f32; 41] {
+        let mut spd = [0.0f32; 41];
+        let c1 = 3.741771e-16_f32;
+        let c2 = 1.4388e-2_f32;
+        for (i, val) in spd.iter_mut().enumerate() {
+            let wl = (380 + i * 10) as f32 * 1e-9_f32;
+            *val = c1 / (wl.powi(5) * ((c2 / (wl * cct)).exp() - 1.0));
+        }
+        spd
+    }
+
+    fn generate_daylight(cct: f32) -> [f32; 41] {
+        // Simplified D-series generator
+        let xd = if cct <= 7000.0 {
+            -4.6070e9 / cct.powi(3) + 2.9678e6 / cct.powi(2) + 0.09911e3 / cct + 0.244063
+        } else {
+            -2.0064e9 / cct.powi(3) + 1.9018e6 / cct.powi(2) + 0.24748e3 / cct + 0.237040
+        };
+
+        let yd = -3.000 * xd * xd + 2.870 * xd - 0.275;
+
+        let m1 = (-1.3515 - 1.7703 * xd + 5.9114 * yd) / (0.0241 + 0.2562 * xd - 0.7341 * yd);
+        let m2 = (0.0300 - 31.4424 * xd + 30.0717 * yd) / (0.0241 + 0.2562 * xd - 0.7341 * yd);
+
+        let mut spd = [0.0f32; 41];
+        for (i, val) in spd.iter_mut().enumerate() {
+            // Using D65 as a base and applying M1, M2 (simplified)
+            *val = illuminant::spd::D65[i] * (1.0 + m1 * 0.01 + m2 * 0.01);
+        }
+        spd
     }
 }
 

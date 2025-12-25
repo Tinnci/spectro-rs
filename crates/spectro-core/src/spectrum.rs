@@ -78,13 +78,24 @@ impl SpectralData {
                         &weighting::WZ_D50_2_10,
                         weighting::SUM_WY_D50_2_10,
                     ),
-                    // For other combinations, fallback to D65/2° with a note
-                    _ => self.to_xyz_reflective_weighted(
-                        &weighting::WX_D65_2_10,
-                        &weighting::WY_D65_2_10,
-                        &weighting::WZ_D65_2_10,
-                        weighting::SUM_WY_D65_2_10,
-                    ),
+                    // For other combinations, calculate weighting factors dynamically
+                    _ => {
+                        let spd = source.get_spd();
+                        let (xb, yb, zb) = obs.get_cmfs();
+                        let mut wx = [0.0f32; 41];
+                        let mut wy = [0.0f32; 41];
+                        let mut wz = [0.0f32; 41];
+                        let mut sum_wy = 0.0f32;
+
+                        for i in 0..41 {
+                            wx[i] = spd[i] * xb[i];
+                            wy[i] = spd[i] * yb[i];
+                            wz[i] = spd[i] * zb[i];
+                            sum_wy += wy[i];
+                        }
+
+                        self.to_xyz_reflective_weighted(&wx, &wy, &wz, sum_wy)
+                    }
                 }
             }
             MeasurementMode::Emissive => self.to_xyz_emissive_ext(obs),
@@ -117,6 +128,111 @@ impl SpectralData {
             y: y * scale,
             z: z * scale,
         }
+    }
+
+    /// Resample spectral data to a new wavelength range and step.
+    /// Uses Sprague interpolation for high accuracy, which is recommended
+    /// by the CIE for spectral data resampling.
+    pub fn resample(&self, start: f32, end: f32, step: f32) -> Self {
+        let mut new_values = Vec::new();
+        let mut current_wl = start;
+
+        // Pad values for Sprague (needs 2 before and 3 after)
+        let mut padded_values = Vec::with_capacity(self.values.len() + 5);
+        if !self.values.is_empty() {
+            padded_values.push(self.values[0]);
+            padded_values.push(self.values[0]);
+            padded_values.extend_from_slice(&self.values);
+            padded_values.push(*self.values.last().unwrap());
+            padded_values.push(*self.values.last().unwrap());
+            padded_values.push(*self.values.last().unwrap());
+        } else {
+            return Self {
+                wavelengths: Vec::new(),
+                values: Vec::new(),
+                mode: self.mode,
+            };
+        }
+
+        let orig_start = self.wavelengths[0];
+        let orig_step = if self.wavelengths.len() > 1 {
+            self.wavelengths[1] - self.wavelengths[0]
+        } else {
+            10.0
+        };
+
+        while current_wl <= end + 1e-3 {
+            let t = (current_wl - orig_start) / orig_step;
+            let i = t.floor() as i32;
+            let x = t - i as f32;
+
+            // i is the index of y0 in the original values
+            // In padded_values, y0 is at index i + 2
+            let idx = (i + 2) as usize;
+
+            if idx < 2 || idx + 3 >= padded_values.len() {
+                // Fallback to linear or clamping at edges
+                let val = if current_wl <= orig_start {
+                    self.values[0]
+                } else if current_wl >= orig_start + (self.values.len() - 1) as f32 * orig_step {
+                    *self.values.last().unwrap()
+                } else {
+                    let i_idx = i.max(0) as usize;
+                    let v0 = self.values[i_idx];
+                    let v1 = self.values[(i_idx + 1).min(self.values.len() - 1)];
+                    v0 + x * (v1 - v0)
+                };
+                new_values.push(val);
+            } else {
+                let y = [
+                    padded_values[idx - 2],
+                    padded_values[idx - 1],
+                    padded_values[idx],
+                    padded_values[idx + 1],
+                    padded_values[idx + 2],
+                    padded_values[idx + 3],
+                ];
+                new_values.push(Self::sprague_interpolate(x, &y));
+            }
+
+            current_wl += step;
+        }
+
+        let mut wavelengths = Vec::new();
+        let mut wl = start;
+        while wl <= end + 1e-3 {
+            wavelengths.push(wl);
+            wl += step;
+        }
+
+        Self {
+            wavelengths,
+            values: new_values,
+            mode: self.mode,
+        }
+    }
+
+    /// Sprague interpolation for a point x in [0, 1] between y[2] and y[3].
+    /// y must contain 6 points: y[-2], y[-1], y[0], y[1], y[2], y[3].
+    fn sprague_interpolate(x: f32, y: &[f32; 6]) -> f32 {
+        let x2 = x * x;
+        let x3 = x2 * x;
+        let x4 = x3 * x;
+        let x5 = x4 * x;
+
+        // Sprague coefficients matrix
+        let a0 = y[2];
+        let a1 = (2.0 * y[0] - 16.0 * y[1] + 16.0 * y[3] - 2.0 * y[4]) / 24.0;
+        let a2 = (-y[0] + 16.0 * y[1] - 30.0 * y[2] + 16.0 * y[3] - y[4]) / 24.0;
+        let a3 = (-9.0 * y[0] + 39.0 * y[1] - 70.0 * y[2] + 66.0 * y[3] - 33.0 * y[4] + 7.0 * y[5])
+            / 120.0;
+        let a4 = (13.0 * y[0] - 64.0 * y[1] + 126.0 * y[2] - 124.0 * y[3] + 61.0 * y[4]
+            - 12.0 * y[5])
+            / 120.0;
+        let a5 = (-5.0 * y[0] + 25.0 * y[1] - 50.0 * y[2] + 50.0 * y[3] - 25.0 * y[4] + 5.0 * y[5])
+            / 120.0;
+
+        a0 + a1 * x + a2 * x2 + a3 * x3 + a4 * x4 + a5 * x5
     }
 
     /// Convert spectral power distribution to XYZ with specified observer.

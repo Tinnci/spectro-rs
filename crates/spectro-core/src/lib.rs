@@ -93,6 +93,7 @@ pub const WAVELENGTHS: [f32; 41] = [
 pub mod colorimetry;
 pub mod device;
 pub mod i18n;
+pub mod icc;
 pub mod munki;
 pub mod persistence;
 pub mod spectrum;
