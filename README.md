@@ -3,6 +3,7 @@
 [![Rust](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Crates.io](https://img.shields.io/crates/v/spectro-rs.svg)](https://crates.io/crates/spectro-rs)
+[![Docs.rs](https://docs.rs/spectro-rs/badge.svg)](https://docs.rs/spectro-rs)
 
 [中文文档 (Chinese)](./README_zh.md)
 
@@ -20,8 +21,10 @@
 - **🧪 Colorimetry Engine**:
     - Real-time calculation of **CIE XYZ**, **Chromaticity (x, y)**, and **CIE L*a*b***.
     - Estimated **CCT (Correlated Color Temperature)** and **Spectral Centroid**.
+    - Configurable **Illuminant** (D65, D50, A, F2, F7, F11) and **Observer** (2°, 10°) settings.
 - **🎨 Spectral Visualization**: Live ANSI color spectrum chart in your terminal.
-- **🌐 Internationalization**: Built-in English and Chinese (Simplified) support.
+- **🌐 Internationalization**: Built-in English and Chinese (Simplified) support with runtime language switching.
+- **🎭 Theme Support**: Light and Dark mode with automatic adaptation.
 
 ---
 
@@ -65,7 +68,7 @@ Always run **Restart Calibration** before critical measurements:
 3. Select **Measure Emissive (Monitor)**.
 
 ### 💡 Light Source (Ambient)
-1. Turn the dial to **Ambient (Position 1)** (with the diffuser罩).
+1. Turn the dial to **Ambient (Position 1)** with the diffuser dome.
 2. Point toward the light source.
 3. Select **Measure Ambient (Light Source)**.
 

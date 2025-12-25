@@ -1,5 +1,10 @@
 # 🌈 spectro-rs (中文版)
 
+[![Rust](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Crates.io](https://img.shields.io/crates/v/spectro-rs.svg)](https://crates.io/crates/spectro-rs)
+[![Docs.rs](https://docs.rs/spectro-rs/badge.svg)](https://docs.rs/spectro-rs)
+
 [English Version](./README.md)
 
 **spectro-rs** 是一个基于 Rust 开发的高性能 X-Rite ColorMunki (Original/Design) 光谱仪驱动程序。
@@ -15,8 +20,11 @@
     - **环境光模式 (Ambient)**：支持环境光扩散罩。
 - **🧪 色度学引擎**：
     - 实时计算 **XYZ**, **x,y 坐标** 和 **L*a*b***。
-    - 自动估算 **CCT (色温)** 和 **质心波长**。
+    - 自动估算 **CCT (色温)** 和 **光谱质心**。
+    - 可配置 **光源** (D65, D50, A, F2, F7, F11) 和 **观察者** (2°, 10°) 设置。
 - **🎨 光谱可视化**：终端彩色柱状图展示光谱分布。
+- **🌐 国际化支持**：内置中英文界面，支持运行时语言切换。
+- **🎭 主题适配**：支持亮色/暗色主题自动切换。
 
 ---
 

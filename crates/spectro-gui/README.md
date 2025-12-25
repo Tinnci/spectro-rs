@@ -12,6 +12,9 @@ A modern graphical interface for **X-Rite ColorMunki** spectrometers, built with
 - **📈 Spectral Analysis**: Peak wavelength, centroid, and CCT
 - **🔄 Multi-Mode**: Reflective, Emissive (Monitor), and Ambient measurement
 - **✓ Auto-Calibration**: Remembers calibration data per device
+- **🌐 Internationalization**: English and Chinese (Simplified) with runtime switching
+- **🎭 Theme Support**: Light and Dark mode with automatic UI adaptation
+- **⚙️ Colorimetry Settings**: Configurable Illuminant and Observer
 
 ## 📦 Installation
 

@@ -20,7 +20,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-spectro-rs = "0.1"
+spectro-rs = "0.3"
 ```
 
 ## 🚀 Quick Start
