@@ -7,6 +7,7 @@ use crossbeam_channel::Sender;
 use eframe::egui;
 
 use crate::shared::DeviceCommand;
+use crate::theme::success_color;
 
 // ============================================================================
 // Calibration State
@@ -139,7 +140,7 @@ impl CalibrationWizard {
                 let color = if is_active {
                     egui::Color32::WHITE
                 } else if is_done {
-                    egui::Color32::from_rgb(50, 205, 50)
+                    success_color(&ui.ctx().style().visuals)
                 } else {
                     egui::Color32::GRAY
                 };
@@ -314,7 +315,7 @@ impl CalibrationWizard {
             egui::RichText::new("✅ Calibration Complete!")
                 .size(24.0)
                 .strong()
-                .color(egui::Color32::from_rgb(50, 205, 50)),
+                .color(success_color(&ui.ctx().style().visuals)),
         );
         ui.add_space(30.0);
 

@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 
 use crate::calibration::CalibrationWizard;
 use crate::shared::{DeviceCommand, ExtendedDeviceInfo, MeasurementEntry, UIUpdate};
-use crate::theme::ThemeConfig;
+use crate::theme::{success_color, ThemeConfig};
 
 // ============================================================================
 // Application State
@@ -281,9 +281,9 @@ impl SpectroApp {
             .map(|ref_lab| lab.delta_e_76(ref_lab))
     }
 
-    fn get_pass_fail(&self, delta_e: f32) -> (bool, egui::Color32) {
+    fn get_pass_fail(&self, delta_e: f32, ctx: &egui::Context) -> (bool, egui::Color32) {
         if delta_e <= self.delta_e_tolerance {
-            (true, egui::Color32::from_rgb(50, 205, 50)) // Lime green
+            (true, success_color(&ctx.style().visuals))
         } else {
             (false, egui::Color32::from_rgb(220, 53, 69)) // Red
         }
@@ -492,7 +492,7 @@ impl SpectroApp {
 
                 // === Pass/Fail Indicator ===
                 if let Some(delta_e) = self.calculate_delta_e(&lab) {
-                    let (passed, color) = self.get_pass_fail(delta_e);
+                    let (passed, color) = self.get_pass_fail(delta_e, ui.ctx());
 
                     let status_text = if passed { "✓ PASS" } else { "✗ FAIL" };
                     ui.colored_label(color, egui::RichText::new(status_text).size(48.0).strong());
@@ -1016,7 +1016,7 @@ impl SpectroApp {
                 .show(ui, |ui| {
                     ui.label("Connected:");
                     if self.is_connected {
-                        ui.colored_label(egui::Color32::GREEN, "Yes ✓");
+                        ui.colored_label(success_color(&ui.ctx().style().visuals), "Yes ✓");
                     } else {
                         ui.colored_label(egui::Color32::RED, "No ✗");
                     }
@@ -1024,7 +1024,7 @@ impl SpectroApp {
 
                     ui.label("Calibrated:");
                     if self.is_calibrated {
-                        ui.colored_label(egui::Color32::GREEN, "Yes ✓");
+                        ui.colored_label(success_color(&ui.ctx().style().visuals), "Yes ✓");
                     } else {
                         ui.colored_label(egui::Color32::YELLOW, "No");
                     }
@@ -1358,7 +1358,7 @@ impl eframe::App for SpectroApp {
 
                     // Device status
                     if self.is_connected {
-                        ui.colored_label(egui::Color32::from_rgb(50, 205, 50), "●");
+                        ui.colored_label(success_color(&ui.ctx().style().visuals), "●");
                         if let Some(ref info) = self.device_info.basic {
                             ui.label(format!("{} ({})", info.model, info.serial));
                         }
@@ -1521,7 +1521,7 @@ impl eframe::App for SpectroApp {
 
                     // Calibration status indicator
                     let (cal_color, cal_text) = if self.is_calibrated {
-                        (egui::Color32::from_rgb(50, 205, 50), "✓ Calibrated")
+                        (success_color(&ctx.style().visuals), "✓ Calibrated")
                     } else {
                         (egui::Color32::from_rgb(255, 193, 7), "⚠ Needs Calibration")
                     };
@@ -1756,7 +1756,7 @@ impl eframe::App for SpectroApp {
                                     );
                                     if let Some(de) = entry.delta_e {
                                         let color = if de <= self.delta_e_tolerance {
-                                            egui::Color32::GREEN
+                                            success_color(&ui.ctx().style().visuals)
                                         } else {
                                             egui::Color32::RED
                                         };
