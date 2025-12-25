@@ -306,6 +306,12 @@ impl SpectroApp {
     fn calculate_delta_e(&self, lab: &Lab) -> Option<f32> {
         self.reference_lab
             .as_ref()
+            .map(|ref_lab| lab.delta_e_2000(ref_lab))
+    }
+
+    fn calculate_delta_e_76(&self, lab: &Lab) -> Option<f32> {
+        self.reference_lab
+            .as_ref()
             .map(|ref_lab| lab.delta_e_76(ref_lab))
     }
 
@@ -460,10 +466,18 @@ impl SpectroApp {
 
                     ui.add_space(10.0);
                     ui.label(
-                        egui::RichText::new(format!("ΔE*₇₆ = {:.2}", delta_e))
+                        egui::RichText::new(format!("ΔE*00 = {:.2}", delta_e))
                             .size(24.0)
                             .color(egui::Color32::GRAY),
                     );
+
+                    if let Some(delta_e_76) = self.calculate_delta_e_76(&lab) {
+                        ui.label(
+                            egui::RichText::new(format!("ΔE*76 = {:.2}", delta_e_76))
+                                .size(14.0)
+                                .color(egui::Color32::DARK_GRAY),
+                        );
+                    }
 
                     ui.add_space(5.0);
                     ui.label(

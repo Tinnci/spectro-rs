@@ -257,6 +257,12 @@ impl SpectralData {
         }
     }
 
+    /// Get the raw wavelengths and values as references.
+    /// Used for spectral reconstruction and external processing.
+    pub fn get_wavelength_data(&self) -> (Vec<f32>, Vec<f32>) {
+        (self.wavelengths.clone(), self.values.clone())
+    }
+
     /// Convert reflectance to XYZ using ASTM E308 weighting factors (D65/2°).
     /// This is the most accurate method for reflective measurements.
     ///
