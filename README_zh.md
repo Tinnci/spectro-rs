@@ -1,96 +1,119 @@
-# 🌈 spectro-rs (中文版)
+# spectro-rs (中文版)
 
-[![Rust](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org)
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Crates.io](https://img.shields.io/crates/v/spectro-rs.svg)](https://crates.io/crates/spectro-rs)
-[![Docs.rs](https://docs.rs/spectro-rs/badge.svg)](https://docs.rs/spectro-rs)
+[![Rust](https://img.shields.io/badge/language-Rust-orange.svg?style=flat-square)](https://www.rust-lang.org)
+[![License](https://img.shields.io/badge/license-GPLv3-blue.svg?style=flat-square)](https://www.gnu.org/licenses/gpl-3.0)
+[![Crates.io](https://img.shields.io/crates/v/spectro-core.svg?style=flat-square)](https://crates.io/crates/spectro-core)
+[![Docs.rs](https://docs.rs/spectro-core/badge.svg?style=flat-square)](https://docs.rs/spectro-core)
+[![Build Status](https://github.com/Tinnci/spectro-rs/actions/workflows/ci.yml/badge.svg?style=flat-square)](https://github.com/Tinnci/spectro-rs/actions)
 
 [English Version](./README.md)
 
-**spectro-rs** 是一个基于 Rust 开发的高性能 X-Rite ColorMunki (Original/Design) 光谱仪驱动程序。
+`spectro-rs` 是针对 X-Rite ColorMunki 系列光谱仪的 Rust 高性能驱动实现与测量算法库。本项目旨在提供安全、低延迟的硬件交互接口，支持跨平台（Windows, macOS, Linux）的精密色彩测量、显示器校准及环境光分析。
 
 ---
 
-## ✨ 核心功能
-
-- **🚀 跨平台支持**：Windows, macOS, Linux 通用。
-- **📊 全模式测量**：
-    - **反射模式 (Reflective)**：带自动白板校准。
-    - **发射模式 (Emissive)**：专用显示器测量矩阵。
-    - **环境光模式 (Ambient)**：支持环境光扩散罩。
-- **🧪 色度学引擎**：
-    - 实时计算 **XYZ**, **x,y 坐标** 和 **L*a*b***。
-    - 自动估算 **CCT (色温)** 和 **光谱质心**。
-    - 可配置 **光源** (D65, D50, A, F2, F7, F11) 和 **观察者** (2°, 10°) 设置。
-- **🎨 光谱可视化**：终端彩色柱状图展示光谱分布。
-- **🌐 国际化支持**：内置中英文界面，支持运行时语言切换。
-- **🎭 主题适配**：支持亮色/暗色主题自动切换。
+## 目录
+- [核心功能](#核心功能)
+- [快速开始](#快速开始)
+- [操作指南](#操作指南)
+- [技术指标](#技术指标)
+- [项目架构](#项目架构)
+- [维护与开发](#维护与开发)
+- [开源协议](#开源协议)
 
 ---
 
-## 🛠️ 快速开始
+## 核心功能
 
-### 1. 运行环境
-- 安装 [Rust 编译环境](https://rust-lang.org)。
-- **Windows 用户**：若无法识别，请用 [Zadig](https://zadig.akeo.ie/) 将驱动更换为 `WinUSB`。
+**跨平台支持**：基于 Rust 的内存安全特性，通过原生 USB 通信协议实现对主流操作系统的全兼容支持。
 
-### 2. 运行
-本项目采用 Cargo Workspace 架构进行管理：
+**多模式测量**：
+- **反射模式 (Reflective)**：集成自动化的 Dark-current（暗电流）与 White-tile（白板）参考校准。
+- **发射模式 (Emissive)**：采用针对显示设备优化的光谱转换矩阵，确保高精度的色彩特征提取。
+- **环境光模式 (Ambient)**：支持通过集成的扩散罩进行 Spectral Power Distribution (SPD) 采集。
 
-- **命令行工具 (CLI)**：原有的交互式终端程序。
-  ```bash
-  cargo run -p spectro-rs
-  ```
-
-- **图形界面 (GUI)**：全新的现代化操作界面，支持实时光谱图和色度分析。
-  ```bash
-  cargo run -p spectro-gui
-  ```
+**精密色度学引擎**：
+- **实时计算**：确定性地计算 CIE XYZ, Chromaticity (x, y) 以及 CIE L*a*b* 坐标。
+- **参数关联**：自动推导 Correlated Color Temperature (CCT) 与 Spectral Centroid。
+- **标准遵循**：支持工业标准的常用光源 (D65, D50, A, F-series) 与观察者函数 (CIE 2°, 10°)。
 
 ---
 
-## 🏗️ 项目结构
+## 快速开始
 
-- **`crates/spectro-rs`**：核心库及命令行工具。包含了硬件通信驱动和基本算法。
-- **`crates/spectro-gui`**：基于 `egui` 和 `eframe` 开发的图形化界面。
+### 编译环境
+本项目的构建依赖于 [Rust toolchain](https://rust-lang.org)（建议使用 Stable 或 Nightly 版本）。
 
-## 📖 操作建议
+### 构建与运行
+通过 Git 部署并利用 Cargo 工作区进行模块化构建：
 
-1. **校准**：测量前请在“白点”位执行 **Restart Calibration**。
-2. **屏幕测量**：将拨盘转至测量位，选择 **Measure Emissive**。
-3. **环境光测量**：将拨盘转至扩散罩位，选择 **Measure Ambient**。
+```bash
+git clone https://github.com/Tinnci/spectro-rs.git
+cd spectro-rs
+```
 
----
+**命令行接口 (CLI)**：适用于自动化脚本与无界面测量环境。
+```bash
+cargo run -p spectro-core
+```
 
-## 🏛️ 技术说明
+**图形界面 (GUI)**：提供基于实时光谱分析的交互式操作套件。
+```bash
+cargo run -p spectro-gui
+```
 
-本项目深度参考了 **ArgyllCMS** 的核心算法逻辑：
-- 实现了完整的 EEPROM 解析和多项式线性化。
-- 支持 380nm - 730nm 的标准光谱映射。
-
----
-
-## 🛠️ 开发与 CI/CD
-
-本项目遵循现代 DevOps 实践，以确保代码质量：
-
-### ⚙️ CI/CD (GitHub Actions)
-- **CI**: 每次推送到 `main` 分支（排除文档更改）都会触发测试、格式检查和静态分析 (`clippy`)。
-- **CD**: 推送标签 (`v*`) 会自动将 Crate 发布到 [crates.io](https://crates.io/crates/spectro-rs)。
-
-### ⚓ Pre-commit 钩子
-为了在本地保持高代码质量，我们使用 `pre-commit`。它确保所有代码在提交前经过格式化并通过静态检查。
-1. 安装 [pre-commit](https://pre-commit.com/)。
-2. 在项目根目录运行 `pre-commit install`。
+*说明：在 Windows 操作系统中，若硬件未被正确识别，需通过 [Zadig](https://zadig.akeo.ie/) 将驱动程序手动替换为 `WinUSB`。*
 
 ---
 
-## ⚖️ 开源协议
+## 操作指南
 
-本项目采用 **[GPLv3](https://www.gnu.org/licenses/gpl-3.0.html)** 开源协议。
+### 校准协议
+为确保测量结果的科学性，每次测量前必须执行 **Restart Calibration** 序列：
+1. 将设备拨盘切换至 **参考位置 (White Dot / Position 2)**。
+2. 驱动程序将依次执行两阶段校准：Dark Frame 采集（建立传感器底噪基准）与 White Tile 归一化。
+
+### 测量执行
+- **屏幕发射模式**：拨盘切换至 **Position 4**，并将设备贴紧目标测量区域。
+- **环境光模式**：拨盘切换至 **Position 1** 并确保扩散罩处于工作位置。
 
 ---
 
-## 🤝 贡献计划
+## 技术指标
 
-欢迎通过 Issue 或 PR 提交反馈！共同打造更强大的 Rust 色彩工具。
+本项目的核心逻辑衍生自 **ArgyllCMS** 开源项目，针对 Rust 所有权模型进行了二次优化：
+- **EEPROM 序列化**：实现了对硬件内置多项式线性化参数及出厂校准矩阵的完整解析。
+- **光谱映射**：将 128 个原始传感器通道高精度转置为 36 个标准的 10nm 光谱带（覆盖 380nm 至 730nm）。
+- **性能优化**：利用 Zero-cost abstractions 确保高频连续测量时的极低 CPU 占用。
+
+---
+
+## 项目架构
+
+- **`crates/spectro-core`**：底层驱动核心库。负责 USB I/O 调度、EEPROM 数据处理及基础数学引擎。
+- **`crates/spectro-gui`**：基于 `egui` 框架构建的前端实现，提供实时数据可视化服务。
+
+---
+
+## 维护与开发
+
+### CI/CD 流程
+通过 GitHub Actions 实现持续集成，对 `main` 分支的每次提交执行严格的静态分析 (`clippy`) 与单元测试。发布流程遵循语义化版本规范。
+
+### 协作规范
+维护者需在本地部署 Pre-commit 钩子，以确保代码风格与项目规范保持严格一致：
+```bash
+pre-commit install
+```
+
+---
+
+## 开源协议
+
+本项目根据 **[GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.html)** 协议条款发布。
+
+---
+
+## 维护者
+
+当前由核心开发团队进行维护。如需报告 Bug 或提交针对新硬件的支持申请，请查阅 GitHub Issue 追踪系统。

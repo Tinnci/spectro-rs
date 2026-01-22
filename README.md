@@ -1,108 +1,119 @@
-# 🌈 spectro-rs
+# spectro-rs
 
-[![Rust](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org)
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Crates.io](https://img.shields.io/crates/v/spectro-rs.svg)](https://crates.io/crates/spectro-rs)
-[![Docs.rs](https://docs.rs/spectro-rs/badge.svg)](https://docs.rs/spectro-rs)
+[![Rust](https://img.shields.io/badge/language-Rust-orange.svg?style=flat-square)](https://www.rust-lang.org)
+[![License](https://img.shields.io/badge/license-GPLv3-blue.svg?style=flat-square)](https://www.gnu.org/licenses/gpl-3.0)
+[![Crates.io](https://img.shields.io/crates/v/spectro-core.svg?style=flat-square)](https://crates.io/crates/spectro-core)
+[![Docs.rs](https://docs.rs/spectro-core/badge.svg?style=flat-square)](https://docs.rs/spectro-core)
+[![Build Status](https://github.com/Tinnci/spectro-rs/actions/workflows/ci.yml/badge.svg?style=flat-square)](https://github.com/Tinnci/spectro-rs/actions)
 
-[中文文档 (Chinese)](./README_zh.md)
+[中文文档 (Traditional Technical Style)](./README_zh.md)
 
-**spectro-rs** is a high-performance Rust driver for X-Rite ColorMunki (Original/Design) spectrometers. It provides a modern, safe, and easy-to-use cross-platform interface for color measurement, display calibration, and light analysis.
-
----
-
-## ✨ Features
-
-- **🚀 Cross-platform**: Supports Windows, macOS, and Linux.
-- **📊 Multi-mode Measurement**:
-    - **Reflective**: Measure paper, prints, and materials. Includes automated dark/white calibration.
-    - **Emissive**: Optimized `emtx` matrix for accurate display/monitor measurement.
-    - **Ambient**: Measure light source spectral power distribution (SPD).
-- **🧪 Colorimetry Engine**:
-    - Real-time calculation of **CIE XYZ**, **Chromaticity (x, y)**, and **CIE L*a*b***.
-    - Estimated **CCT (Correlated Color Temperature)** and **Spectral Centroid**.
-    - Configurable **Illuminant** (D65, D50, A, F2, F7, F11) and **Observer** (2°, 10°) settings.
-- **🎨 Spectral Visualization**: Live ANSI color spectrum chart in your terminal.
-- **🌐 Internationalization**: Built-in English and Chinese (Simplified) support with runtime language switching.
-- **🎭 Theme Support**: Light and Dark mode with automatic adaptation.
+`spectro-rs` is a high-performance Rust implementation of driver logic and measurement algorithms for X-Rite ColorMunki spectrometers. The project provides a safe, low-latency interface for spectral data acquisition, enabling precise colorimetry, display calibration, and ambient light analysis across Windows, macOS, and Linux environments.
 
 ---
 
-## 🛠️ Getting Started
-
-### 1. Prerequisites
-- [Rust toolchain](https://rust-lang.org).
-- **Windows**: If the device is not detected, use [Zadig](https://zadig.akeo.ie/) to replace the driver with `WinUSB`.
-- **Linux**: Ensure you have correct `udev` rules for USB access.
-
-### 2. Run
-This project is organized as a Cargo Workspace:
-
-- **CLI Tool**: The original interactive terminal application.
-  ```bash
-  cargo run -p spectro-rs
-  ```
-
-- **GUI Suite**: A modern graphical interface with live spectral plots and Lab analysis.
-  ```bash
-  cargo run -p spectro-gui
-  ```
+## Table of Contents
+- [Core Functionality](#core-functionality)
+- [Installation and Setup](#installation-and-setup)
+- [Operational Procedures](#operational-procedures)
+- [Technical Specifications](#technical-specifications)
+- [Architecture](#architecture)
+- [Development and Maintenance](#development-and-maintenance)
+- [License](#license)
 
 ---
 
-## 🏗️ Project Structure
+## Core Functionality
 
-- **`crates/spectro-rs`**: The core library and CLI tool. This is the main driver that talks to the hardware.
-- **`crates/spectro-gui`**: The graphical user interface built with `egui` and `eframe`.
+**Cross-platform Support:** Full hardware abstraction layer for Windows, macOS, and Linux via standard USB communication protocols.
 
-## 📖 Operational Guide
+**Multimodal Measurement Capabilities:**
+- **Reflective Mode:** Implements automated dark-current and white-tile reference calibration for surface colorimetry.
+- **Emissive Mode:** Utilizes optimized spectral transformation matrices for high-accuracy display and monitor characterization.
+- **Ambient Mode:** Acquisition of Spectral Power Distribution (SPD) using the integrated diffuser dome.
 
-### 🔄 Calibration
-Always run **Restart Calibration** before critical measurements:
-1. Turn the dial to the **White Dot (Position 2)**.
-2. The program will perform a **Dark Frame** (Lamp OFF) followed by **White Tile** (Lamp ON) calibration.
-
-### 📱 Monitor Mode (Emissive)
-1. Turn the dial to **Measurement (Position 4)**.
-2. Place the device firmly against the screen.
-3. Select **Measure Emissive (Monitor)**.
-
-### 💡 Light Source (Ambient)
-1. Turn the dial to **Ambient (Position 1)** with the diffuser dome.
-2. Point toward the light source.
-3. Select **Measure Ambient (Light Source)**.
+**Advanced Colorimetry Engine:**
+- **Real-time Computation:** Deterministic calculation of CIE XYZ, Chromaticity (x, y), and CIE L*a*b* coordinates.
+- **Spectral Estimation:** Automated derivation of Correlated Color Temperature (CCT) and Spectral Centroid.
+- **Standardized Profiles:** Support for industry-standard Illuminants (D65, D50, A, F-series) and Observer functions (CIE 2°, 10°).
 
 ---
 
-## 🏗️ Technical Background
+## Installation and Setup
 
-Inspired by **ArgyllCMS**:
-- **EEPROM Logic**: Replicates memory mapping for linearization polynomials and factory matrices.
-- **Spectral Mapping**: Transposes 128 sensor readings to 36 standard 10nm bands (380nm-730nm).
+### Prerequisites
+A functioning [Rust toolchain](https://rust-lang.org) (Stable or Nightly) is required for compilation.
 
----
+### Build and Execution
+Integrate the suite by cloning the repository and utilizing the Cargo workspace handlers:
 
-## 🛠️ Development & CI/CD
+```bash
+git clone https://github.com/Tinnci/spectro-rs.git
+cd spectro-rs
+```
 
-This project follows modern DevOps practices to ensure code quality:
+**Command Line Interface (CLI):** Optimized for automation and headless environments.
+```bash
+cargo run -p spectro-core
+```
 
-### ⚙️ CI/CD (GitHub Actions)
-- **CI**: Every push to `main` (excluding documentation changes) triggers a suite of tests, formatting checks, and lints (`clippy`).
-- **CD**: Pushing a tag (`v*`) automatically publishes the crate to [crates.io](https://crates.io/crates/spectro-rs).
+**Graphical User Interface (GUI):** Advanced visualization suite for interactive spectral analysis.
+```bash
+cargo run -p spectro-gui
+```
 
-### ⚓ Pre-commit Hooks
-To maintain high code quality locally, we use `pre-commit`. It ensures all code is formatted and passes lints before you can commit.
-1. Install [pre-commit](https://pre-commit.com/).
-2. Run `pre-commit install` in the project root.
-
----
-
-## ⚖️ License
-
-Licensed under **[GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.html)**.
+*Note: On Windows systems, the generic `WinUSB` driver must be assigned to the device via [Zadig](https://zadig.akeo.ie/) if the hardware is not natively addressed.*
 
 ---
 
-## 🤝 Contributing
+## Operational Procedures
 
-Contributions are welcome! Please open an issue for bugs or feature requests (e.g., support for i1Display Pro).
+### Calibration Protocol
+To maintain measurement integrity, a calibration sequence is mandatory before each session:
+1. Rotate the device dial to the **Reference Position (White Dot / Position 2)**.
+2. The core driver executes a dual-phase calibration: Dark Frame acquisition (sensor noise baseline) followed by White Tile normalization.
+
+### Measurement Execution
+- **Display Emissive:** Position the dial at **Position 4** and secure the device against the target surface.
+- **Ambient Light:** Position the dial at **Position 1** with the diffuser dome engaged.
+
+---
+
+## Technical Specifications
+
+The implementation is derived from the established logic of the **ArgyllCMS** project, with specific enhancements for the Rust ownership model:
+- **EEPROM Serialization:** Full mapping of hardware-stored linearization polynomials and factory-shipped correction matrices.
+- **Spectral Mapping:** High-fidelity transposition of 128 raw sensor bins to 36 standardized 10nm spectral bands (380nm to 730nm).
+- **Performance:** Zero-cost abstractions ensure minimal overhead during high-frequency spectral sampling.
+
+---
+
+## Architecture
+
+- **`crates/spectro-core`:** The foundational driver library. Manages low-level USB I/O, EEPROM parsing, and the core mathematical engine.
+- **`crates/spectro-gui`:** A front-end implementation utilizing the `egui` framework for real-time data visualization.
+
+---
+
+## Development and Maintenance
+
+### CI/CD Pipeline
+Continuous Integration is managed via GitHub Actions, enforcing strict linting (`clippy`) and unit testing on every push to the `main` branch. Automated deployment to `crates.io` is triggered by semantic version tagging.
+
+### Local Compliance
+Maintainers are required to install the provided pre-commit hooks to ensure code style consistency:
+```bash
+pre-commit install
+```
+
+---
+
+## License
+
+This project is licensed under the **[GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.html)**.
+
+---
+
+## Maintainers
+
+Current project maintenance is handled by the core development team. For bug reports or feature expansion requests regarding new spectrophotometer hardware, please utilize the GitHub Issue tracker.
