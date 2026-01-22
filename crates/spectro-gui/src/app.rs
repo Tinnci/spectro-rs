@@ -8,10 +8,10 @@
 
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use eframe::egui;
-use egui_plot::{HLine, Legend, Line, Plot, PlotPoints, Points, VLine};
+use egui_plot::{HLine, Legend, Line, Plot, PlotPoints, VLine};
 use spectro_rs::{
     BoxedSpectrometer, Illuminant, MeasurementMode, Observer,
-    colorimetry::{Lab, X_BAR_2, XYZ, Y_BAR_2, Z_BAR_2, illuminant},
+    colorimetry::{Lab, XYZ},
     discover,
     tm30::calculate_tm30,
 };
@@ -19,13 +19,12 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::calibration::CalibrationWizard;
-
+use crate::inspector::{DeviceInspector, InspectorContext};
 use crate::shared::{DeviceCommand, ExtendedDeviceInfo, MeasurementEntry, UIUpdate};
 use crate::t;
 use crate::theme::{
-    ThemeConfig, border_color, disconnected_color, error_color, info_panel_color, muted_text_color,
-    overlay_shadow_color, panel_bg_color, panel_bg_dark_color, plot_line_color, success_color,
-    warning_color,
+    ThemeConfig, border_color, disconnected_color, info_panel_color, muted_text_color,
+    overlay_shadow_color, panel_bg_color, panel_bg_dark_color, success_color,
 };
 
 // ============================================================================
@@ -35,29 +34,38 @@ use crate::theme::{
 fn render_bento_item<R>(
     ui: &mut egui::Ui,
     title: String,
+    min_width: f32,
+    max_width: f32,
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> R {
     let visuals = &ui.ctx().style().visuals;
 
-    egui::Frame::none()
-        .fill(info_panel_color(visuals))
-        .stroke(egui::Stroke::new(1.0, border_color(visuals)))
-        .rounding(6.0)
-        .inner_margin(egui::Margin::same(12.0))
-        .show(ui, |ui| {
-            ui.vertical(|ui| {
-                ui.label(
-                    egui::RichText::new(title.to_uppercase())
-                        .size(10.0)
-                        .color(muted_text_color(visuals))
-                        .strong(),
-                );
-                ui.add_space(4.0);
-                add_contents(ui)
+    // Use a group to create a self-contained widget that respects horizontal_wrapped
+    ui.scope(|ui| {
+        ui.set_min_width(min_width);
+        ui.set_max_width(max_width);
+
+        egui::Frame::none()
+            .fill(info_panel_color(visuals))
+            .stroke(egui::Stroke::new(1.0, border_color(visuals)))
+            .rounding(6.0)
+            .inner_margin(egui::Margin::same(12.0))
+            .show(ui, |ui| {
+                ui.vertical(|ui| {
+                    ui.label(
+                        egui::RichText::new(title.to_uppercase())
+                            .size(10.0)
+                            .color(muted_text_color(visuals))
+                            .strong(),
+                    );
+                    ui.add_space(4.0);
+                    add_contents(ui)
+                })
+                .inner
             })
             .inner
-        })
-        .inner
+    })
+    .inner
 }
 
 #[expect(
@@ -102,11 +110,10 @@ pub struct SpectroApp {
 
     // UI State
     is_expert_mode: bool,
-    expert_tab: ExpertTab,
     show_reference_input: bool,
     show_settings: bool,
     show_history_panel: bool,
-    show_inspector_panel: bool,
+    inspector: DeviceInspector,
 
     // Theme and UX
     theme_config: ThemeConfig,
@@ -122,17 +129,6 @@ pub struct SpectroApp {
 
     // Calibration wizard (extracted component)
     calibration_wizard: CalibrationWizard,
-}
-
-/// Tabs in the Expert panel
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ExpertTab {
-    RawSensor,
-    DeviceInfo,
-    Algorithm,
-    Chromaticity,
-    ColorQuality,
-    Trend,
 }
 
 // ============================================================================
@@ -279,11 +275,10 @@ impl SpectroApp {
             ref_input_a: 0.0,
             ref_input_b: 0.0,
             is_expert_mode: false,
-            expert_tab: ExpertTab::DeviceInfo,
             show_reference_input: false,
             show_settings: false,
             show_history_panel: true,
-            show_inspector_panel: true,
+            inspector: DeviceInspector::new(),
             theme_config,
             is_continuous: false,
             continuous_interval: 2.0,
@@ -725,44 +720,58 @@ impl SpectroApp {
             let (chroma, hue) = (lab.chroma(), lab.hue());
             let cct = res.cct;
 
+            // Responsive layout: define preferred card dimensions
+            let spacing = 12.0;
+            let min_card_width = 100.0;
+            let max_card_width = 200.0;
+
             ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing = egui::vec2(12.0, 12.0);
+                ui.spacing_mut().item_spacing = egui::vec2(spacing, spacing);
 
                 // Bento 1: LAB
-                render_bento_item(ui, t!("gui-bento-lab"), |ui| {
-                    ui.set_min_width(100.0);
-                    egui::Grid::new("bento_lab").show(ui, |ui| {
-                        ui.label("L*");
-                        ui.label(format!("{:.2}", lab.l));
-                        ui.end_row();
-                        ui.label("a*");
-                        ui.label(format!("{:.2}", lab.a));
-                        ui.end_row();
-                        ui.label("b*");
-                        ui.label(format!("{:.2}", lab.b));
-                        ui.end_row();
-                    });
-                });
+                render_bento_item(
+                    ui,
+                    t!("gui-bento-lab"),
+                    min_card_width,
+                    max_card_width,
+                    |ui| {
+                        egui::Grid::new("bento_lab").show(ui, |ui| {
+                            ui.label("L*");
+                            ui.label(format!("{:.2}", lab.l));
+                            ui.end_row();
+                            ui.label("a*");
+                            ui.label(format!("{:.2}", lab.a));
+                            ui.end_row();
+                            ui.label("b*");
+                            ui.label(format!("{:.2}", lab.b));
+                            ui.end_row();
+                        });
+                    },
+                );
 
                 // Bento 2: XYZ
-                render_bento_item(ui, t!("gui-bento-xyz"), |ui| {
-                    ui.set_min_width(100.0);
-                    egui::Grid::new("bento_xyz").show(ui, |ui| {
-                        ui.label("X");
-                        ui.label(format!("{:.3}", xyz.x));
-                        ui.end_row();
-                        ui.label("Y");
-                        ui.label(format!("{:.3}", xyz.y));
-                        ui.end_row();
-                        ui.label("Z");
-                        ui.label(format!("{:.3}", xyz.z));
-                        ui.end_row();
-                    });
-                });
+                render_bento_item(
+                    ui,
+                    t!("gui-bento-xyz"),
+                    min_card_width,
+                    max_card_width,
+                    |ui| {
+                        egui::Grid::new("bento_xyz").show(ui, |ui| {
+                            ui.label("X");
+                            ui.label(format!("{:.3}", xyz.x));
+                            ui.end_row();
+                            ui.label("Y");
+                            ui.label(format!("{:.3}", xyz.y));
+                            ui.end_row();
+                            ui.label("Z");
+                            ui.label(format!("{:.3}", xyz.z));
+                            ui.end_row();
+                        });
+                    },
+                );
 
                 // Bento 3: Color Indices
-                render_bento_item(ui, t!("gui-bento-indices"), |ui| {
-                    ui.set_min_width(115.0);
+                render_bento_item(ui, t!("gui-bento-indices"), 115.0, max_card_width, |ui| {
                     egui::Grid::new("bento_indices").show(ui, |ui| {
                         ui.label(t!("gui-bento-chroma"));
                         ui.label(format!("{:.1}", chroma));
@@ -777,8 +786,7 @@ impl SpectroApp {
                 });
 
                 // Bento 4: Peak Information
-                render_bento_item(ui, t!("gui-bento-peak"), |ui| {
-                    ui.set_min_width(115.0);
+                render_bento_item(ui, t!("gui-bento-peak"), 115.0, max_card_width, |ui| {
                     ui.vertical(|ui| {
                         ui.label(
                             egui::RichText::new(format!("{:.1} nm", res.peak_wavelength()))
@@ -796,8 +804,7 @@ impl SpectroApp {
                 });
 
                 // Bento 5: sRGB
-                render_bento_item(ui, t!("gui-bento-srgb"), |ui| {
-                    ui.set_min_width(130.0);
+                render_bento_item(ui, t!("gui-bento-srgb"), 130.0, max_card_width, |ui| {
                     ui.horizontal(|ui| {
                         let (r, g, b) = res.rgb_u8();
                         let (rect, _) =
@@ -823,8 +830,7 @@ impl SpectroApp {
 
                 // Bento 6: CRI (if available)
                 if let Some(cri) = res.cri {
-                    render_bento_item(ui, t!("gui-bento-cri"), |ui| {
-                        ui.set_min_width(75.0);
+                    render_bento_item(ui, t!("gui-bento-cri"), 75.0, max_card_width, |ui| {
                         ui.centered_and_justified(|ui| {
                             ui.label(
                                 egui::RichText::new(format!("{:.0}", cri))
@@ -834,515 +840,6 @@ impl SpectroApp {
                         });
                     });
                 }
-            });
-        }
-    }
-
-    fn render_expert_inspector(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.heading(t!("gui-device-inspector"));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("⏵").on_hover_text(t!("gui-hide")).clicked() {
-                    self.show_inspector_panel = false;
-                }
-            });
-        });
-        ui.add_space(10.0);
-
-        // Tab bar
-        ui.horizontal(|ui| {
-            ui.selectable_value(
-                &mut self.expert_tab,
-                ExpertTab::DeviceInfo,
-                format!("📱 {}", t!("gui-device")),
-            );
-            ui.selectable_value(
-                &mut self.expert_tab,
-                ExpertTab::RawSensor,
-                format!("📈 {}", t!("gui-raw-data")),
-            );
-            ui.selectable_value(
-                &mut self.expert_tab,
-                ExpertTab::Algorithm,
-                format!("🧮 {}", t!("gui-algorithm")),
-            );
-            ui.selectable_value(
-                &mut self.expert_tab,
-                ExpertTab::Chromaticity,
-                format!("🎯 {}", t!("gui-xy-diagram")),
-            );
-            ui.selectable_value(
-                &mut self.expert_tab,
-                ExpertTab::ColorQuality,
-                format!("🌈 {}", t!("gui-color-quality")),
-            );
-            ui.selectable_value(
-                &mut self.expert_tab,
-                ExpertTab::Trend,
-                format!("📈 {}", t!("gui-trend")),
-            );
-        });
-
-        ui.separator();
-
-        // Wrap content in ScrollArea for better responsiveness
-        egui::ScrollArea::both()
-            .auto_shrink([false, false])
-            .show(ui, |ui| match self.expert_tab {
-                ExpertTab::DeviceInfo => self.render_device_info_tab(ui),
-                ExpertTab::RawSensor => self.render_raw_sensor_tab(ui),
-                ExpertTab::Algorithm => self.render_algorithm_tab(ui),
-                ExpertTab::Chromaticity => self.render_chromaticity_tab(ui),
-                ExpertTab::ColorQuality => self.render_color_quality_tab(ui),
-                ExpertTab::Trend => self.render_trend_tab(ui),
-            });
-    }
-
-    fn render_trend_tab(&self, ui: &mut egui::Ui) {
-        ui.add_space(5.0);
-        ui.heading(t!("gui-measurement-trend"));
-        ui.add_space(10.0);
-
-        if self.measurement_history.is_empty() {
-            ui.label(t!("gui-no-data"));
-            return;
-        }
-
-        let plot = Plot::new("trend_plot")
-            .view_aspect(2.0)
-            .legend(Legend::default())
-            .y_axis_label("Value")
-            .x_axis_label("Samples (Newest to Oldest)");
-
-        let visuals = ui.ctx().style().visuals.clone();
-        plot.show(ui, |plot_ui| {
-            // L* Trend
-            let l_points: PlotPoints = self
-                .measurement_history
-                .iter()
-                .enumerate()
-                .map(|(i, e)| [i as f64, e.result.lab.l as f64])
-                .collect();
-            plot_ui.line(
-                Line::new(l_points)
-                    .name("L*")
-                    .color(plot_line_color(&visuals)),
-            );
-
-            // Delta E Trend (if reference exists)
-            if self.reference_lab.is_some() {
-                let de_points: PlotPoints = self
-                    .measurement_history
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(i, e)| e.delta_e.map(|de| [i as f64, de as f64]))
-                    .collect();
-                plot_ui.line(Line::new(de_points).name("ΔE*00").color(egui::Color32::RED));
-            }
-        });
-
-        ui.add_space(10.0);
-        ui.label("This chart shows the stability of measurements over time. Useful for monitoring light source warm-up or drift.");
-    }
-
-    fn render_device_info_tab(&self, ui: &mut egui::Ui) {
-        ui.add_space(5.0);
-
-        // Basic Device Info
-        ui.collapsing(t!("gui-device-info"), |ui| {
-            egui::Grid::new("device_info_grid")
-                .num_columns(2)
-                .spacing([20.0, 4.0])
-                .show(ui, |ui| {
-                    if let Some(ref basic) = self.device_info.basic {
-                        ui.label("Model:");
-                        ui.label(&basic.model);
-                        ui.end_row();
-                        ui.label("Serial:");
-                        ui.label(&basic.serial);
-                        ui.end_row();
-                        ui.label("Firmware:");
-                        ui.label(&basic.firmware);
-                        ui.end_row();
-                    } else {
-                        ui.label(t!("gui-status"));
-                        ui.colored_label(
-                            warning_color(&ui.ctx().style().visuals),
-                            t!("gui-not-connected"),
-                        );
-                        ui.end_row();
-                    }
-
-                    if let Some(cal_ver) = self.device_info.cal_version {
-                        ui.label("Cal Version:");
-                        ui.label(format!("0x{:04X}", cal_ver));
-                        ui.end_row();
-                    }
-                });
-        });
-
-        // EEPROM Calibration Data
-        ui.collapsing(t!("gui-eeprom-cal"), |ui| {
-            if let Some(ref white_ref) = self.device_info.white_ref {
-                ui.label(t!("gui-white-ref"));
-
-                // Mini plot of white reference
-                let plot = Plot::new("white_ref_plot")
-                    .height(100.0)
-                    .show_axes([true, true])
-                    .include_y(0.0);
-
-                let visuals = ui.ctx().style().visuals.clone();
-                plot.show(ui, |plot_ui| {
-                    let points: PlotPoints = white_ref
-                        .iter()
-                        .enumerate()
-                        .map(|(i, v)| [(380 + i * 10) as f64, *v as f64])
-                        .collect();
-                    plot_ui.line(
-                        Line::new(points)
-                            .color(plot_line_color(&visuals))
-                            .width(1.5),
-                    );
-                });
-            } else {
-                ui.colored_label(
-                    muted_text_color(&ui.ctx().style().visuals),
-                    t!("gui-white-ref-not-avail"),
-                );
-            }
-
-            ui.add_space(5.0);
-
-            // Emissive calibration coefficients
-            if let Some(ref emis) = self.device_info.emis_coef {
-                ui.collapsing(t!("gui-emissive-coef"), |ui| {
-                    ui.label(format!("Count: {} bands", emis.len()));
-                    if !emis.is_empty() {
-                        ui.label(format!(
-                            "Range: {:.4} - {:.4}",
-                            emis.iter().cloned().fold(f32::INFINITY, f32::min),
-                            emis.iter().cloned().fold(f32::NEG_INFINITY, f32::max)
-                        ));
-                    }
-                });
-            }
-
-            // Ambient calibration coefficients
-            if let Some(ref amb) = self.device_info.amb_coef {
-                ui.collapsing(t!("gui-ambient-coef"), |ui| {
-                    ui.label(format!("Count: {} bands", amb.len()));
-                    if !amb.is_empty() {
-                        ui.label(format!(
-                            "Range: {:.4} - {:.4}",
-                            amb.iter().cloned().fold(f32::INFINITY, f32::min),
-                            amb.iter().cloned().fold(f32::NEG_INFINITY, f32::max)
-                        ));
-                    }
-                });
-            }
-
-            ui.add_space(5.0);
-
-            // Linearization polynomials
-            if let Some(ref lin) = self.device_info.lin_normal {
-                ui.label(format!("Lin (Normal): {:?}", lin));
-            }
-            if let Some(ref lin) = self.device_info.lin_high {
-                ui.label(format!("Lin (High Gain): {:?}", lin));
-            }
-        });
-
-        // Connection Status
-        ui.collapsing("🔌 Connection Status", |ui| {
-            egui::Grid::new("conn_status_grid")
-                .num_columns(2)
-                .spacing([20.0, 4.0])
-                .show(ui, |ui| {
-                    ui.label("Connected:");
-                    if self.is_connected {
-                        ui.colored_label(success_color(&ui.ctx().style().visuals), "Yes ✓");
-                    } else {
-                        ui.colored_label(error_color(&ui.ctx().style().visuals), "No ✗");
-                    }
-                    ui.end_row();
-
-                    ui.label("Calibrated:");
-                    if self.is_calibrated {
-                        ui.colored_label(success_color(&ui.ctx().style().visuals), "Yes ✓");
-                    } else {
-                        ui.colored_label(warning_color(&ui.ctx().style().visuals), "No");
-                    }
-                    ui.end_row();
-
-                    ui.label("Mode:");
-                    ui.label(format!("{:?}", self.selected_mode));
-                    ui.end_row();
-                });
-        });
-    }
-
-    fn render_raw_sensor_tab(&self, ui: &mut egui::Ui) {
-        ui.add_space(5.0);
-
-        if let Some(data) = &self.last_result {
-            ui.label(egui::RichText::new("Spectral Values (380-780nm, 10nm steps)").strong());
-            ui.add_space(5.0);
-
-            // Scrollable table of values
-            egui::ScrollArea::vertical()
-                .max_height(400.0)
-                .show(ui, |ui| {
-                    egui::Grid::new("raw_values_grid")
-                        .num_columns(4)
-                        .spacing([15.0, 2.0])
-                        .striped(true)
-                        .show(ui, |ui| {
-                            // Header
-                            ui.label(egui::RichText::new("λ (nm)").strong());
-                            ui.label(egui::RichText::new("Value").strong());
-                            ui.label(egui::RichText::new("λ (nm)").strong());
-                            ui.label(egui::RichText::new("Value").strong());
-                            ui.end_row();
-
-                            // Values in two columns
-                            for i in (0..data.spectrum.values.len()).step_by(2) {
-                                let wl1 = 380 + i * 10;
-                                ui.label(format!("{}", wl1));
-                                ui.label(format!("{:.6}", data.spectrum.values[i]));
-
-                                if i + 1 < data.spectrum.values.len() {
-                                    let wl2 = 380 + (i + 1) * 10;
-                                    ui.label(format!("{}", wl2));
-                                    ui.label(format!("{:.6}", data.spectrum.values[i + 1]));
-                                }
-                                ui.end_row();
-                            }
-                        });
-                });
-
-            ui.add_space(10.0);
-
-            // Statistics
-            ui.collapsing("📊 Statistics", |ui| {
-                let values = &data.spectrum.values;
-                let min = values.iter().cloned().fold(f32::INFINITY, f32::min);
-                let max = values.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-                let sum: f32 = values.iter().sum();
-                let mean = sum / values.len() as f32;
-
-                egui::Grid::new("stats_grid")
-                    .num_columns(2)
-                    .spacing([20.0, 4.0])
-                    .show(ui, |ui| {
-                        ui.label("Min:");
-                        ui.label(format!("{:.6}", min));
-                        ui.end_row();
-                        ui.label("Max:");
-                        ui.label(format!("{:.6}", max));
-                        ui.end_row();
-                        ui.label("Mean:");
-                        ui.label(format!("{:.6}", mean));
-                        ui.end_row();
-                        ui.label("Total:");
-                        ui.label(format!("{:.6}", sum));
-                        ui.end_row();
-                    });
-            });
-        } else {
-            ui.centered_and_justified(|ui| {
-                ui.label("No measurement data available");
-            });
-        }
-    }
-
-    fn render_algorithm_tab(&self, ui: &mut egui::Ui) {
-        ui.add_space(5.0);
-
-        ui.collapsing("🎯 White Point Reference", |ui| {
-            let wp = illuminant::D65_2;
-            egui::Grid::new("wp_grid")
-                .num_columns(2)
-                .spacing([20.0, 4.0])
-                .show(ui, |ui| {
-                    ui.label("Illuminant:");
-                    ui.label("D65 (2° Observer)");
-                    ui.end_row();
-                    ui.label("Xn:");
-                    ui.label(format!("{:.5}", wp.x));
-                    ui.end_row();
-                    ui.label("Yn:");
-                    ui.label(format!("{:.5}", wp.y));
-                    ui.end_row();
-                    ui.label("Zn:");
-                    ui.label(format!("{:.5}", wp.z));
-                    ui.end_row();
-                });
-        });
-
-        ui.collapsing("📐 Observer Functions", |ui| {
-            ui.label("Currently using: CIE 1931 2° Standard Observer");
-            ui.add_space(5.0);
-
-            // Option to show CMF plot
-            ui.horizontal(|ui| {
-                ui.label("CMFs:");
-                ui.label("x̄(λ), ȳ(λ), z̄(λ) from 380-780nm");
-            });
-        });
-
-        ui.collapsing("🔄 Conversion Pipeline", |ui| {
-            ui.label(egui::RichText::new("Data Flow:").strong());
-            ui.add_space(5.0);
-
-            let pipeline = [
-                "1. Raw Sensor (128 pixels)",
-                "   ↓ EEPROM Matrix Transform",
-                "2. Spectral Data (36 bands)",
-                "   ↓ Dark Subtraction",
-                "3. Corrected Spectrum",
-                "   ↓ CMF Integration",
-                "4. CIE XYZ",
-                "   ↓ Bradford Adaptation",
-                "5. Lab (D65)",
-            ];
-
-            for step in pipeline {
-                ui.label(egui::RichText::new(step).monospace());
-            }
-        });
-
-        if let Some(data) = &self.last_result {
-            ui.collapsing("🧪 Current Calculation", |ui| {
-                let xyz = data.xyz;
-                let xyz_norm = XYZ {
-                    x: xyz.x / 100.0,
-                    y: xyz.y / 100.0,
-                    z: xyz.z / 100.0,
-                };
-                let lab = xyz_norm.to_lab(illuminant::D65_2);
-
-                ui.label(format!("Mode: {:?}", data.spectrum.mode));
-                ui.add_space(5.0);
-
-                egui::Grid::new("calc_grid")
-                    .num_columns(2)
-                    .spacing([20.0, 4.0])
-                    .show(ui, |ui| {
-                        ui.label("XYZ (raw):");
-                        ui.label(format!("({:.3}, {:.3}, {:.3})", xyz.x, xyz.y, xyz.z));
-                        ui.end_row();
-                        ui.label("XYZ (norm):");
-                        ui.label(format!(
-                            "({:.4}, {:.4}, {:.4})",
-                            xyz_norm.x, xyz_norm.y, xyz_norm.z
-                        ));
-                        ui.end_row();
-                        ui.label("Lab:");
-                        ui.label(format!("({:.2}, {:.2}, {:.2})", lab.l, lab.a, lab.b));
-                        ui.end_row();
-                    });
-            });
-        }
-    }
-
-    fn render_chromaticity_tab(&self, ui: &mut egui::Ui) {
-        ui.add_space(5.0);
-        ui.heading("🎯 CIE 1931 xy Chromaticity");
-        ui.add_space(10.0);
-
-        let plot = Plot::new("chromaticity_plot")
-            .data_aspect(1.0)
-            .view_aspect(1.0)
-            .include_x(0.0)
-            .include_x(0.8)
-            .include_y(0.0)
-            .include_y(0.9)
-            .legend(Legend::default())
-            .allow_zoom(true)
-            .allow_drag(true);
-
-        let visuals = ui.ctx().style().visuals.clone();
-        plot.show(ui, |plot_ui| {
-            // 1. Draw Spectral Locus (Horseshoe)
-            let mut locus_points = Vec::new();
-            for i in 0..41 {
-                let sum = X_BAR_2[i] + Y_BAR_2[i] + Z_BAR_2[i];
-                if sum > 0.0 {
-                    locus_points.push([(X_BAR_2[i] / sum) as f64, (Y_BAR_2[i] / sum) as f64]);
-                }
-            }
-            // Close the horseshoe with the purple line (connect 380nm to 780nm)
-            if !locus_points.is_empty() {
-                locus_points.push(locus_points[0]);
-            }
-
-            plot_ui.line(
-                Line::new(PlotPoints::from(locus_points))
-                    .color(egui::Color32::from_gray(100))
-                    .name("Spectral Locus"),
-            );
-
-            // 2. Draw D65 White Point
-            let d65_x = 0.31272;
-            let d65_y = 0.32903;
-            plot_ui.points(
-                Points::new(vec![[d65_x, d65_y]])
-                    .color(plot_line_color(&visuals))
-                    .shape(egui_plot::MarkerShape::Plus)
-                    .name("D65"),
-            );
-
-            // 3. Draw History Trail (Faded)
-            let history_points: Vec<[f64; 2]> = self
-                .measurement_history
-                .iter()
-                .rev() // Draw from oldest to newest
-                .map(|e| {
-                    let xyz = e.result.xyz;
-                    let (x, y) = xyz.to_chromaticity();
-                    [x as f64, y as f64]
-                })
-                .collect();
-
-            if history_points.len() > 1 {
-                plot_ui.line(
-                    Line::new(PlotPoints::from(history_points))
-                        .color(egui::Color32::from_rgba_unmultiplied(100, 100, 100, 100))
-                        .name("History Path"),
-                );
-            }
-
-            // 4. Draw Current Point
-            if let Some(data) = &self.last_result {
-                let xyz = data.xyz;
-                let (x, y) = xyz.to_chromaticity();
-                plot_ui.points(
-                    Points::new(vec![[x as f64, y as f64]])
-                        .color(egui::Color32::RED)
-                        .radius(4.0)
-                        .name("Current Entry"),
-                );
-            }
-        });
-
-        ui.add_space(10.0);
-        ui.label("The horseshoe-shaped region represents all colors visible to the human eye. The red dot indicates the most recent measurement.");
-    }
-
-    fn render_color_quality_tab(&self, ui: &mut egui::Ui) {
-        ui.add_space(5.0);
-        ui.heading(t!("gui-color-quality-tm30"));
-        ui.add_space(10.0);
-
-        if let Some(metrics) = &self.last_tm30 {
-            let visualizer = crate::tm30_gui::Tm30Visualizer::new(metrics.clone());
-            visualizer.ui(ui);
-        } else {
-            ui.vertical_centered(|ui| {
-                ui.add_space(50.0);
-                ui.label("No TM-30 data available.");
-                ui.label("Please take an Emissive measurement to see color quality metrics.");
             });
         }
     }
@@ -1443,17 +940,17 @@ impl eframe::App for SpectroApp {
                             ui.separator();
 
                             // Inspector toggle
-                            let inspector_btn = if self.show_inspector_panel {
+                            let inspector_btn = if self.inspector.visible {
                                 egui::RichText::new("🔍").strong()
                             } else {
                                 egui::RichText::new("🔍").weak()
                             };
                             if ui
-                                .selectable_label(self.show_inspector_panel, inspector_btn)
+                                .selectable_label(self.inspector.visible, inspector_btn)
                                 .on_hover_text(t!("gui-device-inspector"))
                                 .clicked()
                             {
-                                self.show_inspector_panel = !self.show_inspector_panel;
+                                self.inspector.toggle();
                             }
 
                             // History toggle
@@ -1829,7 +1326,7 @@ impl eframe::App for SpectroApp {
         }
 
         // === Left Panel: History (Expert mode only) ===
-        if self.is_expert_mode && !self.measurement_history.is_empty() && self.show_history_panel {
+        if self.is_expert_mode && self.show_history_panel {
             egui::SidePanel::left("history_panel")
                 .resizable(true)
                 .default_width(180.0)
@@ -1846,98 +1343,114 @@ impl eframe::App for SpectroApp {
                     });
                     ui.separator();
 
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        for (idx, entry) in self.measurement_history.iter().enumerate() {
-                            let lab = &entry.result.lab;
-                            let xyz = entry.result.xyz;
-                            let y_max = xyz.y.max(0.01);
-                            let xyz_norm = XYZ {
-                                x: xyz.x / y_max,
-                                y: xyz.y / y_max,
-                                z: xyz.z / y_max,
-                            };
-                            let (r, g, b) = xyz_norm.to_srgb();
+                    if self.measurement_history.is_empty() {
+                        ui.centered_and_justified(|ui| {
+                            ui.label(egui::RichText::new(t!("gui-no-data")).weak());
+                        });
+                    } else {
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            for (idx, entry) in self.measurement_history.iter().enumerate() {
+                                let lab = &entry.result.lab;
+                                let xyz = entry.result.xyz;
+                                let y_max = xyz.y.max(0.01);
+                                let xyz_norm = XYZ {
+                                    x: xyz.x / y_max,
+                                    y: xyz.y / y_max,
+                                    z: xyz.z / y_max,
+                                };
+                                let (r, g, b) = xyz_norm.to_srgb();
 
-                            ui.horizontal(|ui| {
-                                // Color swatch
-                                let (rect, _) = ui.allocate_exact_size(
-                                    egui::vec2(24.0, 24.0),
-                                    egui::Sense::hover(),
-                                );
-                                ui.painter().rect_filled(
-                                    rect,
-                                    4.0,
-                                    egui::Color32::from_rgb(r, g, b),
-                                );
+                                ui.horizontal(|ui| {
+                                    // Color swatch
+                                    let (rect, _) = ui.allocate_exact_size(
+                                        egui::vec2(24.0, 24.0),
+                                        egui::Sense::hover(),
+                                    );
+                                    ui.painter().rect_filled(
+                                        rect,
+                                        4.0,
+                                        egui::Color32::from_rgb(r, g, b),
+                                    );
 
-                                ui.vertical(|ui| {
-                                    // Show mode icon and timestamp
-                                    let mode_icon = match entry.mode {
-                                        MeasurementMode::Reflective => "📄",
-                                        MeasurementMode::Emissive => "🖥️",
-                                        MeasurementMode::Ambient => "💡",
-                                    };
-                                    ui.label(
-                                        egui::RichText::new(format!(
-                                            "{} {}",
-                                            mode_icon, entry.timestamp
-                                        ))
-                                        .small(),
-                                    );
-                                    ui.label(
-                                        egui::RichText::new(format!(
-                                            "L:{:.0} a:{:.0} b:{:.0}",
-                                            lab.l, lab.a, lab.b
-                                        ))
-                                        .small(),
-                                    );
-                                    if let Some(de) = entry.delta_e {
-                                        let color = if de <= self.delta_e_tolerance {
-                                            success_color(&ui.ctx().style().visuals)
-                                        } else {
-                                            egui::Color32::RED
+                                    ui.vertical(|ui| {
+                                        // Show mode icon and timestamp
+                                        let mode_icon = match entry.mode {
+                                            MeasurementMode::Reflective => "📄",
+                                            MeasurementMode::Emissive => "🖥️",
+                                            MeasurementMode::Ambient => "💡",
                                         };
-                                        ui.colored_label(
-                                            color,
-                                            egui::RichText::new(format!("ΔE00={:.1}", de)).small(),
+                                        ui.label(
+                                            egui::RichText::new(format!(
+                                                "{} {}",
+                                                mode_icon, entry.timestamp
+                                            ))
+                                            .small(),
                                         );
-                                    }
+                                        ui.label(
+                                            egui::RichText::new(format!(
+                                                "L:{:.0} a:{:.0} b:{:.0}",
+                                                lab.l, lab.a, lab.b
+                                            ))
+                                            .small(),
+                                        );
+                                        if let Some(de) = entry.delta_e {
+                                            let color = if de <= self.delta_e_tolerance {
+                                                success_color(&ui.ctx().style().visuals)
+                                            } else {
+                                                egui::Color32::RED
+                                            };
+                                            ui.colored_label(
+                                                color,
+                                                egui::RichText::new(format!("ΔE00={:.1}", de))
+                                                    .small(),
+                                            );
+                                        }
+                                    });
                                 });
-                            });
 
-                            if idx < self.measurement_history.len() - 1 {
-                                ui.separator();
+                                if idx < self.measurement_history.len() - 1 {
+                                    ui.separator();
+                                }
                             }
-                        }
-                    });
+                        });
 
-                    ui.add_space(10.0);
-                    ui.horizontal(|ui| {
-                        if ui.button("CSV").clicked() {
-                            self.export_history_csv();
-                        }
-                        if ui.button("JSON").clicked() {
-                            self.export_history_json();
-                        }
-                        if ui.button("CGATS").clicked() {
-                            self.export_history_cgats();
-                        }
-                        if ui.button("Clear").clicked() {
-                            self.measurement_history.clear();
-                        }
-                    });
+                        ui.add_space(10.0);
+                        ui.horizontal(|ui| {
+                            if ui.button("CSV").clicked() {
+                                self.export_history_csv();
+                            }
+                            if ui.button("JSON").clicked() {
+                                self.export_history_json();
+                            }
+                            if ui.button("CGATS").clicked() {
+                                self.export_history_cgats();
+                            }
+                            if ui.button("Clear").clicked() {
+                                self.measurement_history.clear();
+                            }
+                        });
+                    }
                 });
         }
 
         // === Right Panel: Expert Inspector ===
-        if self.is_expert_mode && self.show_inspector_panel {
+        if self.is_expert_mode && self.inspector.visible {
             egui::SidePanel::right("expert_panel")
                 .resizable(true)
                 .default_width(260.0)
                 .min_width(160.0)
                 .max_width(350.0)
                 .show(ctx, |ui| {
-                    self.render_expert_inspector(ui);
+                    let ctx = InspectorContext {
+                        device_info: &self.device_info,
+                        is_connected: self.is_connected,
+                        is_calibrated: self.is_calibrated,
+                        selected_mode: self.selected_mode,
+                        last_result: self.last_result.as_ref(),
+                        last_tm30: self.last_tm30.as_ref(),
+                        history: &self.measurement_history,
+                    };
+                    self.inspector.render(ui, &ctx);
                 });
         }
 

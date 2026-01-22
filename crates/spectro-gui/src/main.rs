@@ -1,6 +1,7 @@
 mod app;
 mod calibration;
 mod i18n;
+mod inspector;
 mod shared;
 mod theme;
 mod tm30_gui;
