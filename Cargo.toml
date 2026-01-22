@@ -4,3 +4,13 @@ members = [
     "crates/spectro-gui",
 ]
 resolver = "2"
+
+[workspace.lints.rust]
+# Ensure that attributes that don't do anything or are redundant are flagged.
+unused_attributes = "warn"
+
+[workspace.lints.clippy]
+# Force all lint suppression to have a reason.
+allow_attributes_without_reason = "deny"
+# Encourage switching from #[allow] to #[expect] for cleaner lifecycle management.
+allow_attributes = "warn"

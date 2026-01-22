@@ -23,7 +23,10 @@ pub const Z_BAR_2: [f32; 41] = [
 ];
 
 /// CIE 1964 10-degree Standard Observer CMFs (380-780nm, 10nm steps)
-#[allow(clippy::approx_constant)]
+#[expect(
+    clippy::approx_constant,
+    reason = "Standard CIE constant with prescribed precision"
+)]
 pub const X_BAR_10: [f32; 41] = [
     0.0002, 0.0011, 0.0061, 0.0315, 0.1241, 0.3023, 0.5045, 0.6931, 0.8177, 0.7530, 0.5314, 0.3345,
     0.1570, 0.0538, 0.0331, 0.1117, 0.2230, 0.4243, 0.6627, 0.8690, 1.0107, 1.0743, 1.0257, 0.8724,
@@ -374,7 +377,10 @@ pub mod chromatic_adaptation {
     /// let xyz_d50 = XYZ { x: 0.5, y: 0.5, z: 0.4 };
     /// let xyz_d65 = chromatic_adaptation::bradford_adapt(xyz_d50, illuminant::D50, illuminant::D65);
     /// ```
-    #[allow(clippy::excessive_precision)]
+    #[expect(
+        clippy::excessive_precision,
+        reason = "The Bradford transform matrix requires high precision as defined in the ICC/Lindbloom standard"
+    )]
     pub fn bradford_adapt(xyz: XYZ, src_wp: XYZ, dst_wp: XYZ) -> XYZ {
         // Bradford M matrix (XYZ to LMS cone response)
         // Source: Bruce Lindbloom, ICC Profile specification
@@ -523,7 +529,10 @@ impl XYZ {
     /// If your XYZ values are based on a different illuminant (e.g., D50 from
     /// an ICC profile), you must first use `chromatic_adaptation::bradford_adapt`
     /// to convert to D65 before calling this method.
-    #[allow(clippy::excessive_precision)]
+    #[expect(
+        clippy::excessive_precision,
+        reason = "High precision is required for accurate sRGB gamut conversion"
+    )]
     pub fn to_srgb(&self) -> (u8, u8, u8) {
         // XYZ to linear sRGB matrix (IEC 61966-2-1, D65 reference)
         let r_lin = 3.2404542 * self.x - 1.5371385 * self.y - 0.4985314 * self.z;
@@ -571,7 +580,10 @@ impl XYZ {
     /// # Parameters
     /// * `luminance_scale`: Scaling factor for absolute luminance (cd/m²).
     ///   For SDR, typically 100.0 or 200.0.
-    #[allow(clippy::excessive_precision)]
+    #[expect(
+        clippy::excessive_precision,
+        reason = "Jzazbz conversion matrices depend on exact coefficients from the original paper for perceptual uniformity"
+    )]
     pub fn to_jzazbz(&self, luminance_scale: f32) -> Jzazbz {
         // Step 1: Absolute luminance scaling
         let x = self.x * luminance_scale;
@@ -710,11 +722,7 @@ impl Lab {
                 0.0
             } else {
                 let h = b.atan2(ap).to_degrees();
-                if h < 0.0 {
-                    h + 360.0
-                } else {
-                    h
-                }
+                if h < 0.0 { h + 360.0 } else { h }
             }
         };
         let h1p = get_hp(self.b, a1p);
@@ -798,11 +806,7 @@ impl Lab {
     /// Calculate hue angle (h°) in degrees [0, 360).
     pub fn hue(&self) -> f32 {
         let h = self.b.atan2(self.a).to_degrees();
-        if h < 0.0 {
-            h + 360.0
-        } else {
-            h
-        }
+        if h < 0.0 { h + 360.0 } else { h }
     }
 }
 
@@ -824,11 +828,7 @@ impl Jzazbz {
     /// Calculate hue angle (hz) in degrees [0, 360).
     pub fn hue(&self) -> f32 {
         let h = self.bz.atan2(self.az).to_degrees();
-        if h < 0.0 {
-            h + 360.0
-        } else {
-            h
-        }
+        if h < 0.0 { h + 360.0 } else { h }
     }
 
     /// Mix two Jzazbz colors by a given ratio.
@@ -974,7 +974,7 @@ pub mod metrics {
 
 /// Color appearance and analysis utilities.
 pub mod appearance {
-    use super::{illuminant, Lab, XYZ};
+    use super::{Lab, XYZ, illuminant};
     use crate::spectrum::SpectralData;
 
     /// Calculate Metamerism Index between two spectral samples.

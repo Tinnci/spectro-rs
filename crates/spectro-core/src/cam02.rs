@@ -86,11 +86,7 @@ impl Cam02Ucs {
 
     pub fn h(&self) -> f32 {
         let h = self.b_prime.atan2(self.a_prime).to_degrees();
-        if h < 0.0 {
-            h + 360.0
-        } else {
-            h
-        }
+        if h < 0.0 { h + 360.0 } else { h }
     }
 
     /// Simple gamut mapping: if a color is outside the target gamut,
@@ -256,8 +252,8 @@ impl Cam02State {
 
         let j_prime = ((1.0 + 100.0 * c1) * j) / (1.0 + c1 * j);
         let m = c * self.fl.powf(0.25); // Use colorfulness M or chroma C? UCS uses M usually, but often simplified.
-                                        // Actually, CAM02-UCS uses J', a', b' derived from J, M, h
-                                        // M = C * F_L^0.25
+        // Actually, CAM02-UCS uses J', a', b' derived from J, M, h
+        // M = C * F_L^0.25
         let m_prime = (1.0 / c2) * (1.0 + c2 * m).ln();
 
         let a_prime = m_prime * h_rad.cos();

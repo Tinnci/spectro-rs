@@ -3,10 +3,8 @@
 //! Implements the IES TM-30-18 standard for evaluating light source color quality
 //! using CES99 test samples and color appearance modeling.
 
-#![allow(clippy::needless_range_loop)]
-
 use crate::cam02::{Cam02State, Surround, ViewingConditions};
-use crate::colorimetry::{calculate_cct, XYZ};
+use crate::colorimetry::{XYZ, calculate_cct};
 use crate::spectrum::SpectralData;
 use crate::tm30_data::CES99_SPDS;
 use crate::tm30_data_cmf::{X_BAR_10_5NM, Y_BAR_10_5NM, Z_BAR_10_5NM};
@@ -225,9 +223,9 @@ fn generate_planckian_5nm(temp: f32) -> [f32; 95] {
     let c1 = 3.741771e-16;
     let c2 = 1.4388e-2;
 
-    for i in 0..95 {
+    for (i, val) in spd.iter_mut().enumerate() {
         let wl = (360 + i * 5) as f32 * 1e-9;
-        spd[i] = c1 * wl.powi(-5) / ((c2 / (wl * temp)).exp() - 1.0);
+        *val = c1 * wl.powi(-5) / ((c2 / (wl * temp)).exp() - 1.0);
     }
     spd
 }
@@ -262,7 +260,7 @@ fn generate_daylight_5nm(temp: f32) -> [f32; 95] {
     ];
 
     let mut spd = [0.0f32; 95];
-    for i in 0..95 {
+    for (i, val) in spd.iter_mut().enumerate() {
         let wl = (360 + i * 5) as f32;
         // Interpolate S0, S1, S2 from 10nm table
         let t = (wl - 380.0) / 10.0;
@@ -285,9 +283,9 @@ fn generate_daylight_5nm(temp: f32) -> [f32; 95] {
         let s1 = get_val(&S1, idx, x);
         let s2 = get_val(&S2, idx, x);
 
-        spd[i] = s0 + m1 * s1 + m2 * s2;
-        if spd[i] < 0.0 {
-            spd[i] = 0.0;
+        *val = s0 + m1 * s1 + m2 * s2;
+        if *val < 0.0 {
+            *val = 0.0;
         }
     }
     spd

@@ -1,8 +1,8 @@
 //! Internationalization support for spectro-gui.
 
 use i18n_embed::{
-    fluent::{fluent_language_loader, FluentLanguageLoader},
     DesktopLanguageRequester, LanguageLoader,
+    fluent::{FluentLanguageLoader, fluent_language_loader},
 };
 use rust_embed::RustEmbed;
 use std::sync::LazyLock;
@@ -27,7 +27,10 @@ pub enum Language {
 }
 
 impl Language {
-    #[allow(dead_code)]
+    #[expect(
+        dead_code,
+        reason = "Reserved for potential dynamic language switching logic in future versions"
+    )]
     pub fn to_tag(self) -> &'static str {
         match self {
             Language::Auto => "auto",

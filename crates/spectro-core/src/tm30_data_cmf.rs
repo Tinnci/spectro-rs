@@ -1,4 +1,7 @@
-#![allow(clippy::excessive_precision)]
+#![allow(
+    clippy::excessive_precision,
+    reason = "Standard CMF values require high precision as defined in the CIE standard"
+)]
 /// CIE 1964 10° Standard Observer CMFs (360-830nm, 5nm steps)
 pub const X_BAR_10_5NM: [f32; 95] = [
     0.000000122200,

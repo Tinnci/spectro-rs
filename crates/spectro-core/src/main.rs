@@ -2,9 +2,9 @@
 //!
 //! This is the interactive command-line interface for the spectro-rs library.
 
-use dialoguer::{theme::ColorfulTheme, Select};
+use dialoguer::{Select, theme::ColorfulTheme};
 use spectro_rs::{
-    colorimetry::XYZ, device::DevicePosition, discover, i18n, t, MeasurementMode, Result,
+    MeasurementMode, Result, colorimetry::XYZ, device::DevicePosition, discover, i18n, t,
 };
 
 fn main() -> Result<()> {

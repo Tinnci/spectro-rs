@@ -1,7 +1,7 @@
 [package]
 name = "spectro-gui"
 version = "0.3.4"
-edition = "2021"
+edition = "2024"
 authors = ["Tinnci <shisoratsu@icloud.com>"]
 description = "Graphical User Interface for the spectro-rs spectrometer driver suite"
 license = "GPL-3.0"

@@ -1,5 +1,5 @@
-use crate::colorimetry::{weighting, XYZ, X_BAR_10, X_BAR_2, Y_BAR_10, Y_BAR_2, Z_BAR_10, Z_BAR_2};
 use crate::WAVELENGTHS;
+use crate::colorimetry::{X_BAR_2, X_BAR_10, XYZ, Y_BAR_2, Y_BAR_10, Z_BAR_2, Z_BAR_10, weighting};
 use crate::{Illuminant, Observer};
 
 /// Measurement mode determines the calculation method for XYZ conversion.

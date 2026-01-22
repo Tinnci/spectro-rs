@@ -91,7 +91,6 @@ fn create_dark_theme() -> Visuals {
 // ============================================================================
 
 /// Get success color (green) that works on both themes
-#[allow(dead_code)]
 pub fn success_color(visuals: &Visuals) -> Color32 {
     if visuals.dark_mode {
         Color32::from_rgb(50, 205, 50) // Lime green on dark
@@ -101,7 +100,7 @@ pub fn success_color(visuals: &Visuals) -> Color32 {
 }
 
 /// Get warning/highlight color (yellow/orange) that works on both themes
-#[allow(dead_code)]
+#[expect(dead_code, reason = "Utility color for planned UI highlights")]
 pub fn highlight_color(visuals: &Visuals) -> Color32 {
     if visuals.dark_mode {
         Color32::from_rgb(255, 200, 50) // Golden yellow on dark
@@ -111,7 +110,6 @@ pub fn highlight_color(visuals: &Visuals) -> Color32 {
 }
 
 /// Get line/stroke color for plots that adapts to theme
-#[allow(dead_code)]
 pub fn plot_line_color(visuals: &Visuals) -> Color32 {
     if visuals.dark_mode {
         Color32::from_rgb(200, 200, 200)
@@ -121,7 +119,6 @@ pub fn plot_line_color(visuals: &Visuals) -> Color32 {
 }
 
 /// Get a contrasting color for graphical elements (dial center, etc.)
-#[allow(dead_code)]
 pub fn contrast_fill_color(visuals: &Visuals) -> Color32 {
     if visuals.dark_mode {
         Color32::WHITE
@@ -194,7 +191,10 @@ pub fn warning_color(visuals: &Visuals) -> Color32 {
 }
 
 /// Get connected indicator color (green dot)
-#[allow(dead_code)]
+#[expect(
+    dead_code,
+    reason = "Indicator color for future device connection status UI"
+)]
 pub fn connected_color(_visuals: &Visuals) -> Color32 {
     Color32::from_rgb(50, 205, 50) // Lime green visible on both
 }

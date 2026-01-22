@@ -495,11 +495,9 @@ impl<T: Transport> Munki<T> {
         self.white_cal_factors = Some(factors);
 
         // Persist calibration data
-        if let Some(dark) = &self.dark_ref {
-            if let Some(white) = &self.white_cal_factors {
-                let _ =
-                    crate::persistence::save_calibration(&self.config.serial_number, dark, white);
-            }
+        // Persist calibration data
+        if let (Some(dark), Some(white)) = (&self.dark_ref, &self.white_cal_factors) {
+            let _ = crate::persistence::save_calibration(&self.config.serial_number, dark, white);
         }
 
         Ok(())

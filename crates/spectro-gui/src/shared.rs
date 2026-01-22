@@ -1,6 +1,6 @@
 //! Shared types for communication between UI and device worker threads.
 
-use spectro_rs::{colorimetry::Lab, tm30::TM30Metrics, DeviceInfo, MeasurementMode, SpectralData};
+use spectro_rs::{DeviceInfo, MeasurementMode, SpectralData, colorimetry::Lab, tm30::TM30Metrics};
 
 // ============================================================================
 // Device Information Structures

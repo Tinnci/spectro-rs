@@ -201,7 +201,10 @@ impl IccProfile {
         self.lut_b2a = Some(lut);
     }
 
-    #[allow(dead_code)]
+    #[expect(
+        dead_code,
+        reason = "Matrix inversion is required for the upcoming inverse transform (B2A) implementation"
+    )]
     fn get_inverse_matrix(&self) -> [f32; 9] {
         let m = [
             self.red_primary[0],
@@ -315,7 +318,7 @@ impl IccProfile {
         buf.write_all(&len.to_be_bytes()).unwrap();
         buf.write_all(self.description.as_bytes()).unwrap();
         buf.push(0); // Null terminator
-                     // Padding for other fields in desc tag (V2)
+        // Padding for other fields in desc tag (V2)
         buf.write_all(&[0u8; 67]).unwrap();
         buf
     }
@@ -413,7 +416,7 @@ mod tests {
     #[test]
     fn test_lut_interpolation() {
         let mut lut = Lut3D::new(3); // 3x3x3 grid
-                                     // Fill with identity-like mapping for testing
+        // Fill with identity-like mapping for testing
         lut.fill(|r, g, b| [r, g, b]);
 
         // Test exact grid points

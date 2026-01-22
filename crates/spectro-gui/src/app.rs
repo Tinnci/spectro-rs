@@ -6,14 +6,14 @@
 //! - **Simple Mode**: Large color swatch, Pass/Fail display, key metrics only.
 //! - **Expert Mode**: Full spectral plot, EEPROM data viewer, raw sensor values.
 
-use crossbeam_channel::{unbounded, Receiver, Sender};
+use crossbeam_channel::{Receiver, Sender, unbounded};
 use eframe::egui;
 use egui_plot::{HLine, Legend, Line, Plot, PlotPoints, Points, VLine};
 use spectro_rs::{
-    colorimetry::{illuminant, Lab, XYZ, X_BAR_2, Y_BAR_2, Z_BAR_2},
+    BoxedSpectrometer, Illuminant, MeasurementMode, Observer, SpectralData,
+    colorimetry::{Lab, X_BAR_2, XYZ, Y_BAR_2, Z_BAR_2, illuminant},
     discover,
     tm30::calculate_tm30,
-    BoxedSpectrometer, Illuminant, MeasurementMode, Observer, SpectralData,
 };
 use std::thread;
 use std::time::{Duration, Instant};
@@ -22,9 +22,9 @@ use crate::calibration::CalibrationWizard;
 use crate::shared::{DeviceCommand, ExtendedDeviceInfo, MeasurementEntry, UIUpdate};
 use crate::t;
 use crate::theme::{
-    border_color, disconnected_color, error_color, info_panel_color, muted_text_color,
+    ThemeConfig, border_color, disconnected_color, error_color, info_panel_color, muted_text_color,
     overlay_shadow_color, panel_bg_color, panel_bg_dark_color, plot_line_color, success_color,
-    warning_color, ThemeConfig,
+    warning_color,
 };
 
 // ============================================================================
@@ -369,12 +369,11 @@ impl SpectroApp {
             .set_file_name("measurements.json")
             .save_file();
 
-        if let Some(path) = file_path {
-            if let Ok(json) = serde_json::to_string_pretty(&self.measurement_history) {
-                if let Err(e) = std::fs::write(path, json) {
-                    eprintln!("Failed to write JSON: {}", e);
-                }
-            }
+        if let Some(path) = file_path
+            && let Ok(json) = serde_json::to_string_pretty(&self.measurement_history)
+            && let Err(e) = std::fs::write(path, json)
+        {
+            eprintln!("Failed to write JSON: {}", e);
         }
     }
 
@@ -1769,14 +1768,14 @@ impl eframe::App for SpectroApp {
                             });
                             self.show_reference_input = false;
                         }
-                        if ui.button(t!("gui-use-current")).clicked() {
-                            if let Some(lab) = self.get_current_lab() {
-                                self.ref_input_l = lab.l;
-                                self.ref_input_a = lab.a;
-                                self.ref_input_b = lab.b;
-                                self.reference_lab = Some(lab);
-                                self.show_reference_input = false;
-                            }
+                        if ui.button(t!("gui-use-current")).clicked()
+                            && let Some(lab) = self.get_current_lab()
+                        {
+                            self.ref_input_l = lab.l;
+                            self.ref_input_a = lab.a;
+                            self.ref_input_b = lab.b;
+                            self.reference_lab = Some(lab);
+                            self.show_reference_input = false;
                         }
                         if ui.button(t!("gui-clear")).clicked() {
                             self.reference_lab = None;

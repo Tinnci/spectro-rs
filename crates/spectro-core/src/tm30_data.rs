@@ -1,5 +1,11 @@
-#![allow(clippy::approx_constant)]
-#![allow(clippy::large_const_arrays)]
+#![allow(
+    clippy::approx_constant,
+    reason = "Physical and colorimetric constants require high precision representations"
+)]
+#![allow(
+    clippy::large_const_arrays,
+    reason = "Spectral data tables (CES99) are inherently large constant arrays"
+)]
 pub const CES99_SPDS: [[f32; 95]; 99] = [
     [
         0.61947, 0.61947, 0.61947, 0.61947, 0.61947, 0.62357, 0.62766, 0.63172, 0.63590, 0.64015,
