@@ -1,10 +1,13 @@
 mod app;
+mod backend;
 mod calibration;
+mod components;
 mod i18n;
 mod inspector;
 mod shared;
 mod theme;
 mod tm30_gui;
+mod views;
 
 use eframe::egui;
 use spectro_rs::Result;
