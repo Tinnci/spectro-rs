@@ -101,126 +101,187 @@ pub fn render_expert_workspace(ui: &mut egui::Ui, ui_ctx: &ExpertViewContext) {
         let (chroma, hue) = (lab.chroma(), lab.hue());
         let cct = res.cct;
 
-        // Responsive layout: define preferred card dimensions
+        // Responsive layout with intelligent grid calculation
         let spacing = 12.0;
-        let min_card_width = 100.0;
-        let max_card_width = 200.0;
+        let card_width = 150.0; // Fixed width for visual consistency
 
-        ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing = egui::vec2(spacing, spacing);
+        // Calculate optimal cards per row based on available width
+        let available_width = ui.available_width();
+        let cards_per_row = ((available_width + spacing) / (card_width + spacing))
+            .floor()
+            .max(1.0) as usize;
 
-            // Bento 1: LAB
-            render_bento_item(
-                ui,
-                t!("gui-bento-lab"),
-                min_card_width,
-                max_card_width,
-                |ui| {
-                    egui::Grid::new("bento_lab").show(ui, |ui| {
-                        ui.label("L*");
-                        ui.label(format!("{:.2}", lab.l));
-                        ui.end_row();
-                        ui.label("a*");
-                        ui.label(format!("{:.2}", lab.a));
-                        ui.end_row();
-                        ui.label("b*");
-                        ui.label(format!("{:.2}", lab.b));
-                        ui.end_row();
-                    });
-                },
-            );
+        // Pre-calculate total card count
+        let total_cards: usize = if res.cri.is_some() { 6 } else { 5 };
+        let rows = total_cards.div_ceil(cards_per_row);
 
-            // Bento 2: XYZ
-            render_bento_item(
-                ui,
-                t!("gui-bento-xyz"),
-                min_card_width,
-                max_card_width,
-                |ui| {
-                    egui::Grid::new("bento_xyz").show(ui, |ui| {
-                        ui.label("X");
-                        ui.label(format!("{:.3}", xyz.x));
-                        ui.end_row();
-                        ui.label("Y");
-                        ui.label(format!("{:.3}", xyz.y));
-                        ui.end_row();
-                        ui.label("Z");
-                        ui.label(format!("{:.3}", xyz.z));
-                        ui.end_row();
-                    });
-                },
-            );
+        let mut card_index = 0;
 
-            // Bento 3: Color Indices
-            render_bento_item(ui, t!("gui-bento-indices"), 115.0, max_card_width, |ui| {
-                egui::Grid::new("bento_indices").show(ui, |ui| {
-                    ui.label(t!("gui-bento-chroma"));
-                    ui.label(format!("{:.1}", chroma));
-                    ui.end_row();
-                    ui.label(t!("gui-bento-hue"));
-                    ui.label(format!("{:.1}°", hue));
-                    ui.end_row();
-                    ui.label(t!("gui-bento-cct"));
-                    ui.label(format!("{:.0}K", cct));
-                    ui.end_row();
-                });
+        for row_idx in 0..rows {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing = egui::vec2(spacing, spacing);
+
+                let cards_in_this_row = (cards_per_row).min(total_cards - card_index);
+
+                for _ in 0..cards_in_this_row {
+                    match card_index {
+                        0 => {
+                            render_bento_item(
+                                ui,
+                                t!("gui-bento-lab"),
+                                card_width,
+                                card_width,
+                                |ui| {
+                                    egui::Grid::new("bento_lab").show(ui, |ui| {
+                                        ui.label("L*");
+                                        ui.label(format!("{:.2}", lab.l));
+                                        ui.end_row();
+                                        ui.label("a*");
+                                        ui.label(format!("{:.2}", lab.a));
+                                        ui.end_row();
+                                        ui.label("b*");
+                                        ui.label(format!("{:.2}", lab.b));
+                                        ui.end_row();
+                                    });
+                                },
+                            );
+                        }
+                        1 => {
+                            render_bento_item(
+                                ui,
+                                t!("gui-bento-xyz"),
+                                card_width,
+                                card_width,
+                                |ui| {
+                                    egui::Grid::new("bento_xyz").show(ui, |ui| {
+                                        ui.label("X");
+                                        ui.label(format!("{:.3}", xyz.x));
+                                        ui.end_row();
+                                        ui.label("Y");
+                                        ui.label(format!("{:.3}", xyz.y));
+                                        ui.end_row();
+                                        ui.label("Z");
+                                        ui.label(format!("{:.3}", xyz.z));
+                                        ui.end_row();
+                                    });
+                                },
+                            );
+                        }
+                        2 => {
+                            render_bento_item(
+                                ui,
+                                t!("gui-bento-indices"),
+                                card_width,
+                                card_width,
+                                |ui| {
+                                    egui::Grid::new("bento_indices").show(ui, |ui| {
+                                        ui.label(t!("gui-bento-chroma"));
+                                        ui.label(format!("{:.1}", chroma));
+                                        ui.end_row();
+                                        ui.label(t!("gui-bento-hue"));
+                                        ui.label(format!("{:.1}°", hue));
+                                        ui.end_row();
+                                        ui.label(t!("gui-bento-cct"));
+                                        ui.label(format!("{:.0}K", cct));
+                                        ui.end_row();
+                                    });
+                                },
+                            );
+                        }
+                        3 => {
+                            render_bento_item(
+                                ui,
+                                t!("gui-bento-peak"),
+                                card_width,
+                                card_width,
+                                |ui| {
+                                    ui.vertical_centered(|ui| {
+                                        ui.label(
+                                            egui::RichText::new(format!(
+                                                "{:.1} nm",
+                                                res.peak_wavelength()
+                                            ))
+                                            .size(24.0)
+                                            .strong(),
+                                        );
+                                        ui.label(
+                                            egui::RichText::new(format!(
+                                                "Centroid: {:.1}nm",
+                                                res.centroid_wavelength()
+                                            ))
+                                            .weak(),
+                                        );
+                                    });
+                                },
+                            );
+                        }
+                        4 => {
+                            render_bento_item(
+                                ui,
+                                t!("gui-bento-srgb"),
+                                card_width,
+                                card_width,
+                                |ui| {
+                                    ui.horizontal(|ui| {
+                                        let (r, g, b) = res.rgb_u8();
+                                        let (rect, _) = ui.allocate_at_least(
+                                            egui::vec2(40.0, 40.0),
+                                            egui::Sense::hover(),
+                                        );
+                                        ui.painter().rect_filled(
+                                            rect,
+                                            4.0,
+                                            egui::Color32::from_rgb(r, g, b),
+                                        );
+                                        ui.painter().rect_stroke(
+                                            rect,
+                                            4.0,
+                                            egui::Stroke::new(1.0, border_color(ui.visuals())),
+                                        );
+                                        ui.add_space(8.0);
+                                        ui.vertical(|ui| {
+                                            ui.label(format!("RGB: {}, {}, {}", r, g, b));
+                                            ui.label(
+                                                egui::RichText::new(format!(
+                                                    "#{:02X}{:02X}{:02X}",
+                                                    r, g, b
+                                                ))
+                                                .monospace()
+                                                .weak(),
+                                            );
+                                        });
+                                    });
+                                },
+                            );
+                        }
+                        5 => {
+                            if let Some(cri) = res.cri {
+                                render_bento_item(
+                                    ui,
+                                    t!("gui-bento-cri"),
+                                    card_width,
+                                    card_width,
+                                    |ui| {
+                                        ui.centered_and_justified(|ui| {
+                                            ui.label(
+                                                egui::RichText::new(format!("{:.0}", cri))
+                                                    .size(28.0)
+                                                    .strong(),
+                                            );
+                                        });
+                                    },
+                                );
+                            }
+                        }
+                        _ => {}
+                    }
+                    card_index += 1;
+                }
             });
 
-            // Bento 4: Peak Information
-            render_bento_item(ui, t!("gui-bento-peak"), 115.0, max_card_width, |ui| {
-                ui.vertical(|ui| {
-                    ui.label(
-                        egui::RichText::new(format!("{:.1} nm", res.peak_wavelength()))
-                            .size(24.0)
-                            .strong(),
-                    );
-                    ui.label(
-                        egui::RichText::new(format!(
-                            "Centroid: {:.1}nm",
-                            res.centroid_wavelength()
-                        ))
-                        .weak(),
-                    );
-                });
-            });
-
-            // Bento 5: sRGB
-            render_bento_item(ui, t!("gui-bento-srgb"), 130.0, max_card_width, |ui| {
-                ui.horizontal(|ui| {
-                    let (r, g, b) = res.rgb_u8();
-                    let (rect, _) =
-                        ui.allocate_at_least(egui::vec2(40.0, 40.0), egui::Sense::hover());
-                    ui.painter()
-                        .rect_filled(rect, 4.0, egui::Color32::from_rgb(r, g, b));
-                    ui.painter().rect_stroke(
-                        rect,
-                        4.0,
-                        egui::Stroke::new(1.0, border_color(ui.visuals())),
-                    );
-                    ui.add_space(8.0);
-                    ui.vertical(|ui| {
-                        ui.label(format!("RGB: {}, {}, {}", r, g, b));
-                        ui.label(
-                            egui::RichText::new(format!("#{:02X}{:02X}{:02X}", r, g, b))
-                                .monospace()
-                                .weak(),
-                        );
-                    });
-                });
-            });
-
-            // Bento 6: CRI (if available)
-            if let Some(cri) = res.cri {
-                render_bento_item(ui, t!("gui-bento-cri"), 75.0, max_card_width, |ui| {
-                    ui.centered_and_justified(|ui| {
-                        ui.label(
-                            egui::RichText::new(format!("{:.0}", cri))
-                                .size(28.0)
-                                .strong(),
-                        );
-                    });
-                });
+            if row_idx < rows - 1 {
+                ui.add_space(spacing);
             }
-        });
+        }
     }
 }
