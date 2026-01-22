@@ -18,7 +18,7 @@ pub fn render_bento_item<R>(
             .fill(info_panel_color(visuals))
             .stroke(egui::Stroke::new(1.0, border_color(visuals)))
             .rounding(6.0)
-            .inner_margin(egui::Margin::same(12.0))
+            .inner_margin(egui::Margin::same(ui.spacing().item_spacing.y))
             .show(ui, |ui| {
                 ui.vertical(|ui| {
                     ui.label(
@@ -27,7 +27,7 @@ pub fn render_bento_item<R>(
                             .color(muted_text_color(visuals))
                             .strong(),
                     );
-                    ui.add_space(4.0);
+                    ui.add_space(ui.spacing().item_spacing.y * 0.4);
                     add_contents(ui)
                 })
                 .inner

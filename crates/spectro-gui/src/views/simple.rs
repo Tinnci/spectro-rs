@@ -10,11 +10,12 @@ pub struct SimpleViewContext<'a> {
     pub calculate_delta_e: Box<dyn Fn(&Lab) -> Option<f32> + 'a>,
     pub calculate_delta_e_76: Box<dyn Fn(&Lab) -> Option<f32> + 'a>,
     pub delta_e_tolerance: f32,
+    pub layout: &'a crate::theme::LayoutConfig,
 }
 
 pub fn render_simple_workspace(ui: &mut egui::Ui, ui_ctx: &SimpleViewContext) {
     ui.vertical_centered(|ui| {
-        ui.add_space(20.0);
+        ui.add_space(ui_ctx.layout.spacing * 2.0);
 
         if let Some(res) = ui_ctx.last_result {
             let (r, g, b) = (
@@ -51,7 +52,7 @@ pub fn render_simple_workspace(ui: &mut egui::Ui, ui_ctx: &SimpleViewContext) {
                 egui::Stroke::new(2.0, border_color(&ui.ctx().style().visuals)),
             );
 
-            ui.add_space(20.0);
+            ui.add_space(ui_ctx.layout.spacing * 2.0);
 
             // === Pass/Fail Indicator ===
             if let Some(delta_e) = (ui_ctx.calculate_delta_e)(&lab) {
@@ -65,7 +66,7 @@ pub fn render_simple_workspace(ui: &mut egui::Ui, ui_ctx: &SimpleViewContext) {
                 let status_text = if passed { "✓ PASS" } else { "✗ FAIL" };
                 ui.colored_label(color, egui::RichText::new(status_text).size(48.0).strong());
 
-                ui.add_space(10.0);
+                ui.add_space(ui_ctx.layout.spacing);
                 ui.label(
                     egui::RichText::new(format!("ΔE*00 = {:.2}", delta_e))
                         .size(24.0)
@@ -80,7 +81,7 @@ pub fn render_simple_workspace(ui: &mut egui::Ui, ui_ctx: &SimpleViewContext) {
                     );
                 }
 
-                ui.add_space(5.0);
+                ui.add_space(ui_ctx.layout.spacing * 0.5);
                 ui.label(
                     egui::RichText::new(format!("Tolerance: ≤ {:.1}", ui_ctx.delta_e_tolerance))
                         .size(14.0)
@@ -88,11 +89,11 @@ pub fn render_simple_workspace(ui: &mut egui::Ui, ui_ctx: &SimpleViewContext) {
                 );
             }
 
-            ui.add_space(20.0);
+            ui.add_space(ui_ctx.layout.spacing * 2.0);
 
             // === Key Metrics (Large Font) ===
             ui.horizontal(|ui| {
-                ui.add_space(ui.available_width() / 2.0 - 150.0);
+                ui.add_space(ui.available_width() / 2.0 - ui_ctx.layout.bento_min_width);
 
                 egui::Frame::none()
                     .fill(info_panel_color(&ui.ctx().style().visuals))
@@ -112,7 +113,7 @@ pub fn render_simple_workspace(ui: &mut egui::Ui, ui_ctx: &SimpleViewContext) {
                                         .strong(),
                                 );
                             });
-                            ui.add_space(20.0);
+                            ui.add_space(ui_ctx.layout.spacing * 2.0);
                             ui.vertical(|ui| {
                                 ui.label(
                                     egui::RichText::new("a*")
@@ -125,7 +126,7 @@ pub fn render_simple_workspace(ui: &mut egui::Ui, ui_ctx: &SimpleViewContext) {
                                         .strong(),
                                 );
                             });
-                            ui.add_space(20.0);
+                            ui.add_space(ui_ctx.layout.spacing * 2.0);
                             ui.vertical(|ui| {
                                 ui.label(
                                     egui::RichText::new("b*")
@@ -142,7 +143,7 @@ pub fn render_simple_workspace(ui: &mut egui::Ui, ui_ctx: &SimpleViewContext) {
                     });
             });
 
-            ui.add_space(20.0);
+            ui.add_space(ui_ctx.layout.spacing * 2.0);
 
             // === sRGB Value ===
             ui.label(
@@ -158,19 +159,19 @@ pub fn render_simple_workspace(ui: &mut egui::Ui, ui_ctx: &SimpleViewContext) {
             );
         } else {
             // No measurement yet
-            ui.add_space(100.0);
+            ui.add_space(ui_ctx.layout.spacing * 10.0); // Large space before footer
             ui.label(
                 egui::RichText::new("📷")
                     .size(64.0)
                     .color(egui::Color32::from_rgb(80, 80, 100)),
             );
-            ui.add_space(20.0);
+            ui.add_space(ui_ctx.layout.spacing * 2.0);
             ui.label(
                 egui::RichText::new("No measurement yet")
                     .size(20.0)
                     .color(muted_text_color(&ui.ctx().style().visuals)),
             );
-            ui.add_space(10.0);
+            ui.add_space(ui_ctx.layout.spacing);
             ui.label(
                 egui::RichText::new("Click 'Measure' to take a reading")
                     .size(14.0)

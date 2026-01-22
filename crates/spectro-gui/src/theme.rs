@@ -213,12 +213,44 @@ pub fn overlay_shadow_color(visuals: &Visuals) -> Color32 {
     }
 }
 
-/// Theme configuration with persistence (now also includes language)
+/// Layout constants and spacing configuration (Single Source of Truth)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LayoutConfig {
+    pub window_min_width: f32,
+    pub window_min_height: f32,
+    pub history_min_width: f32,
+    pub history_default_width: f32,
+    pub inspector_min_width: f32,
+    pub inspector_default_width: f32,
+    pub inspector_max_width: f32,
+    pub bento_min_width: f32,
+    pub spacing: f32,
+}
+
+impl Default for LayoutConfig {
+    fn default() -> Self {
+        Self {
+            window_min_width: 450.0,
+            window_min_height: 500.0,
+            history_min_width: 120.0,
+            history_default_width: 180.0,
+            inspector_min_width: 160.0,
+            inspector_default_width: 260.0,
+            inspector_max_width: 350.0,
+            bento_min_width: 150.0,
+            spacing: 12.0,
+        }
+    }
+}
+
+/// Theme configuration with persistence
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThemeConfig {
     pub mode: ThemeMode,
     #[serde(default)]
     pub language: crate::i18n::Language,
+    #[serde(default)]
+    pub layout: LayoutConfig,
 }
 
 impl Default for ThemeConfig {
@@ -226,6 +258,7 @@ impl Default for ThemeConfig {
         ThemeConfig {
             mode: ThemeMode::Dark,
             language: crate::i18n::Language::Auto,
+            layout: LayoutConfig::default(),
         }
     }
 }
@@ -242,8 +275,25 @@ impl ThemeConfig {
     /// Save theme to config file
     pub fn save(&self, config_path: &str) -> Result<(), Box<dyn std::error::Error>> {
         let json = serde_json::to_string_pretty(self)?;
+        let _ = std::fs::create_dir_all(
+            std::path::Path::new(config_path)
+                .parent()
+                .unwrap_or(std::path::Path::new(".")),
+        );
         std::fs::write(config_path, json)?;
         Ok(())
+    }
+
+    /// Apply all theme settings to egui::Context
+    pub fn apply_to_ctx(&self, ctx: &egui::Context) {
+        // Apply Visuals
+        ctx.set_visuals(self.to_visuals());
+
+        // Apply Spacing
+        ctx.style_mut(|style| {
+            style.spacing.item_spacing = egui::vec2(self.layout.spacing, self.layout.spacing);
+            style.spacing.window_margin = egui::Margin::same(self.layout.spacing);
+        });
     }
 
     /// Get current visuals
@@ -270,6 +320,7 @@ mod tests {
         let config = ThemeConfig {
             mode: ThemeMode::Light,
             language: crate::i18n::Language::Auto,
+            layout: LayoutConfig::default(),
         };
 
         let json = serde_json::to_string(&config).unwrap();

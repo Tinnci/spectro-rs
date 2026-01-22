@@ -82,6 +82,7 @@ impl CalibrationWizard {
         cmd_tx: &Sender<DeviceCommand>,
         is_busy: &mut bool,
         status_msg: &str,
+        layout: &crate::theme::LayoutConfig,
     ) {
         if !self.show {
             return;
@@ -94,31 +95,31 @@ impl CalibrationWizard {
             .fixed_size([400.0, 480.0])
             .show(ctx, |ui| {
                 ui.vertical_centered(|ui| {
-                    ui.add_space(10.0);
+                    ui.add_space(layout.spacing);
 
                     // Step Indicator
                     self.render_step_indicator(ui);
 
-                    ui.add_space(20.0);
+                    ui.add_space(layout.spacing * 2.0);
                     ui.separator();
-                    ui.add_space(20.0);
+                    ui.add_space(layout.spacing * 2.0);
 
                     match self.step {
                         CalibrationStep::RotateDial => {
-                            self.render_step_rotate_dial(ui, cmd_tx, is_busy);
+                            self.render_step_rotate_dial(ui, cmd_tx, is_busy, layout);
                         }
                         CalibrationStep::PlaceOnTile => {
-                            self.render_step_place_on_tile(ui, cmd_tx, is_busy);
+                            self.render_step_place_on_tile(ui, cmd_tx, is_busy, layout);
                         }
                         CalibrationStep::Calibrating => {
-                            self.render_step_calibrating(ui, cmd_tx, is_busy, status_msg);
+                            self.render_step_calibrating(ui, cmd_tx, is_busy, status_msg, layout);
                         }
                         CalibrationStep::Complete => {
-                            self.render_step_complete(ui);
+                            self.render_step_complete(ui, layout);
                         }
                     }
 
-                    ui.add_space(20.0);
+                    ui.add_space(layout.spacing * 2.0);
 
                     // Cancel button (available in all steps except Complete)
                     if self.step != CalibrationStep::Complete
@@ -170,17 +171,18 @@ impl CalibrationWizard {
         ui: &mut egui::Ui,
         cmd_tx: &Sender<DeviceCommand>,
         is_busy: &mut bool,
+        layout: &crate::theme::LayoutConfig,
     ) {
         ui.label(
             egui::RichText::new("Step 1: Rotate the Dial")
                 .size(20.0)
                 .strong(),
         );
-        ui.add_space(20.0);
+        ui.add_space(layout.spacing * 2.0);
 
         Self::render_device_dial(ui, "CALIBRATE", 180.0);
 
-        ui.add_space(20.0);
+        ui.add_space(layout.spacing * 2.0);
         ui.label("Rotate dial to the");
         ui.label(
             egui::RichText::new("CALIBRATION POSITION")
@@ -188,7 +190,7 @@ impl CalibrationWizard {
                 .strong(),
         );
         ui.label("(Look for the small PILL/RECTANGLE icon)");
-        ui.add_space(20.0);
+        ui.add_space(layout.spacing * 2.0);
 
         // Navigation Buttons
         ui.horizontal(|ui| {
@@ -199,7 +201,7 @@ impl CalibrationWizard {
                 self.step = CalibrationStep::PlaceOnTile;
             }
 
-            ui.add_space(10.0);
+            ui.add_space(layout.spacing);
 
             // Quick/Force Calibrate
             if ui
@@ -225,13 +227,14 @@ impl CalibrationWizard {
         ui: &mut egui::Ui,
         cmd_tx: &Sender<DeviceCommand>,
         is_busy: &mut bool,
+        layout: &crate::theme::LayoutConfig,
     ) {
         ui.label(
             egui::RichText::new("Step 2: Position the Device")
                 .size(20.0)
                 .strong(),
         );
-        ui.add_space(20.0);
+        ui.add_space(layout.spacing * 2.0);
 
         // Simple graphic representation
         let (rect, _) = ui.allocate_exact_size(egui::vec2(150.0, 100.0), egui::Sense::hover());
@@ -255,7 +258,7 @@ impl CalibrationWizard {
             egui::Stroke::new(2.0, muted_text_color(&ui.ctx().style().visuals)),
         );
 
-        ui.add_space(20.0);
+        ui.add_space(layout.spacing * 2.0);
         ui.label("Place the ColorMunki on the");
         ui.label(
             egui::RichText::new("WHITE CALIBRATION TILE")
@@ -263,7 +266,7 @@ impl CalibrationWizard {
                 .strong(),
         );
         ui.label("(Included with your device)");
-        ui.add_space(20.0);
+        ui.add_space(layout.spacing * 2.0);
 
         ui.horizontal(|ui| {
             if ui.button("← Back").clicked() {
@@ -287,20 +290,21 @@ impl CalibrationWizard {
         cmd_tx: &Sender<DeviceCommand>,
         is_busy: &mut bool,
         status_msg: &str,
+        layout: &crate::theme::LayoutConfig,
     ) {
         ui.label(
             egui::RichText::new("Step 3: Calibrating...")
                 .size(20.0)
                 .strong(),
         );
-        ui.add_space(30.0);
+        ui.add_space(layout.spacing * 3.0);
 
         // Check for error state
         if status_msg.contains("❌") || status_msg.contains("failed") {
             ui.colored_label(error_color(&ui.ctx().style().visuals), t!("gui-cal-failed"));
-            ui.add_space(10.0);
+            ui.add_space(layout.spacing);
             ui.label(status_msg);
-            ui.add_space(20.0);
+            ui.add_space(layout.spacing * 2.0);
 
             if ui.button("🔄 Retry").clicked() {
                 *is_busy = true;
@@ -311,9 +315,9 @@ impl CalibrationWizard {
             }
         } else {
             ui.spinner();
-            ui.add_space(20.0);
+            ui.add_space(layout.spacing * 2.0);
             ui.label("Please wait while the device calibrates...");
-            ui.add_space(10.0);
+            ui.add_space(layout.spacing);
             ui.label(
                 egui::RichText::new("Do not move the device")
                     .italics()
@@ -322,20 +326,20 @@ impl CalibrationWizard {
         }
     }
 
-    fn render_step_complete(&mut self, ui: &mut egui::Ui) {
+    fn render_step_complete(&mut self, ui: &mut egui::Ui, layout: &crate::theme::LayoutConfig) {
         ui.label(
             egui::RichText::new("✅ Calibration Complete!")
                 .size(24.0)
                 .strong()
                 .color(success_color(&ui.ctx().style().visuals)),
         );
-        ui.add_space(30.0);
+        ui.add_space(layout.spacing * 3.0);
 
         ui.label("Your ColorMunki is now calibrated and ready for measurements.");
-        ui.add_space(10.0);
+        ui.add_space(layout.spacing);
         ui.label("You can now rotate the dial back to your desired measurement mode.");
 
-        ui.add_space(30.0);
+        ui.add_space(layout.spacing * 3.0);
 
         if ui
             .button(egui::RichText::new("Finish").size(16.0))
@@ -472,7 +476,11 @@ impl CalibrationWizard {
     }
 
     /// Render a small dial check reminder for measurement modes.
-    pub fn render_dial_check(ctx: &egui::Context, mode_name: &str) {
+    pub fn render_dial_check(
+        ctx: &egui::Context,
+        mode_name: &str,
+        layout: &crate::theme::LayoutConfig,
+    ) {
         egui::Window::new("⚙️ Dial Check")
             .collapsible(false)
             .resizable(false)
@@ -481,7 +489,7 @@ impl CalibrationWizard {
                 ui.vertical_centered(|ui| {
                     ui.label(egui::RichText::new("Check Dial Position").strong());
                     Self::render_device_dial(ui, mode_name, 100.0);
-                    ui.add_space(5.0);
+                    ui.add_space(layout.spacing * 0.5);
                     ui.label(
                         egui::RichText::new(format!("Set dial to: {}", mode_name.to_uppercase()))
                             .small(),

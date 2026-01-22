@@ -1,4 +1,15 @@
 {
   "mode": "Light",
-  "language": "Auto"
+  "language": "Auto",
+  "layout": {
+    "window_min_width": 450.0,
+    "window_min_height": 500.0,
+    "history_min_width": 150.0,
+    "history_default_width": 180.0,
+    "inspector_min_width": 200.0,
+    "inspector_default_width": 260.0,
+    "inspector_max_width": 350.0,
+    "bento_min_width": 167.0,
+    "spacing": 3.0
+  }
 }

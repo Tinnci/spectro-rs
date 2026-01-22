@@ -15,7 +15,7 @@ impl Tm30Visualizer {
         Self { metrics }
     }
 
-    pub fn ui(&self, ui: &mut egui::Ui) {
+    pub fn ui(&self, ui: &mut egui::Ui, layout: &crate::theme::LayoutConfig) {
         ui.vertical(|ui| {
             ui.heading(t!("gui-tm30-vector"));
 
@@ -118,14 +118,14 @@ impl Tm30Visualizer {
                 );
             }
 
-            ui.add_space(10.0);
+            ui.add_space(layout.spacing);
             ui.horizontal(|ui| {
                 ui.label(
                     egui::RichText::new(format!("Rf: {:.1}", self.metrics.rf))
                         .strong()
                         .color(contrast_fill_color(&ui.ctx().style().visuals)),
                 );
-                ui.add_space(20.0);
+                ui.add_space(layout.spacing * 2.0);
                 ui.label(
                     egui::RichText::new(format!("Rg: {:.1}", self.metrics.rg))
                         .strong()
@@ -137,9 +137,9 @@ impl Tm30Visualizer {
                 self.metrics.cct, self.metrics.duv
             ));
 
-            ui.add_space(20.0);
+            ui.add_space(layout.spacing * 2.0);
             ui.heading(t!("gui-tm30-ces"));
-            ui.add_space(5.0);
+            ui.add_space(layout.spacing * 0.5);
 
             egui::ScrollArea::vertical()
                 .max_height(200.0)
@@ -158,14 +158,14 @@ impl Tm30Visualizer {
                     });
                 });
 
-            ui.add_space(20.0);
+            ui.add_space(layout.spacing * 2.0);
             ui.heading(t!("gui-tm30-hue-bin"));
-            ui.add_space(5.0);
+            ui.add_space(layout.spacing * 0.5);
 
             egui::Grid::new("tm30_bin_grid")
                 .striped(true)
                 .num_columns(4)
-                .spacing([20.0, 4.0])
+                .spacing([layout.spacing * 2.0, layout.spacing * 0.4])
                 .show(ui, |ui| {
                     ui.label(t!("gui-tm30-bin"));
                     ui.label(t!("gui-tm30-rf"));

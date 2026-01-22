@@ -6,6 +6,7 @@ use egui_plot::{HLine, Legend, Line, Plot, PlotPoints, VLine};
 
 pub struct ExpertViewContext<'a> {
     pub last_result: Option<&'a spectro_rs::spectrum::MeasurementResult>,
+    pub layout: &'a crate::theme::LayoutConfig,
 }
 
 pub fn render_expert_workspace(ui: &mut egui::Ui, ui_ctx: &ExpertViewContext) {
@@ -93,7 +94,7 @@ pub fn render_expert_workspace(ui: &mut egui::Ui, ui_ctx: &ExpertViewContext) {
     });
 
     // === Multi-dimensional Data Dashboard ===
-    ui.add_space(10.0);
+    ui.add_space(ui_ctx.layout.spacing);
 
     if let Some(res) = ui_ctx.last_result {
         let xyz = res.xyz;
@@ -101,15 +102,18 @@ pub fn render_expert_workspace(ui: &mut egui::Ui, ui_ctx: &ExpertViewContext) {
         let (chroma, hue) = (lab.chroma(), lab.hue());
         let cct = res.cct;
 
-        // Responsive layout with intelligent grid calculation
-        let spacing = 12.0;
-        let card_width = 150.0; // Fixed width for visual consistency
+        // Fluid Responsive Grid calculation (similar to CSS: repeat(auto-fit, minmax(150px, 1fr)))
+        let spacing = ui_ctx.layout.spacing;
+        let min_card_width = ui_ctx.layout.bento_min_width;
 
-        // Calculate optimal cards per row based on available width
         let available_width = ui.available_width();
-        let cards_per_row = ((available_width + spacing) / (card_width + spacing))
+        let cards_per_row = ((available_width + spacing) / (min_card_width + spacing))
             .floor()
             .max(1.0) as usize;
+
+        // Distribute remaining space so cards fill the entire row
+        let fluid_card_width =
+            (available_width - (cards_per_row as f32 - 1.0) * spacing) / cards_per_row as f32;
 
         // Pre-calculate total card count
         let total_cards: usize = if res.cri.is_some() { 6 } else { 5 };
@@ -129,20 +133,25 @@ pub fn render_expert_workspace(ui: &mut egui::Ui, ui_ctx: &ExpertViewContext) {
                             render_bento_item(
                                 ui,
                                 t!("gui-bento-lab"),
-                                card_width,
-                                card_width,
+                                fluid_card_width,
+                                fluid_card_width,
                                 |ui| {
-                                    egui::Grid::new("bento_lab").show(ui, |ui| {
-                                        ui.label("L*");
-                                        ui.label(format!("{:.2}", lab.l));
-                                        ui.end_row();
-                                        ui.label("a*");
-                                        ui.label(format!("{:.2}", lab.a));
-                                        ui.end_row();
-                                        ui.label("b*");
-                                        ui.label(format!("{:.2}", lab.b));
-                                        ui.end_row();
-                                    });
+                                    let rows = [
+                                        ("L*", format!("{:.2}", lab.l)),
+                                        ("a*", format!("{:.2}", lab.a)),
+                                        ("b*", format!("{:.2}", lab.b)),
+                                    ];
+                                    for (label, value) in rows {
+                                        ui.horizontal(|ui| {
+                                            ui.label(label);
+                                            ui.with_layout(
+                                                egui::Layout::right_to_left(egui::Align::Center),
+                                                |ui| {
+                                                    ui.label(egui::RichText::new(value).strong());
+                                                },
+                                            );
+                                        });
+                                    }
                                 },
                             );
                         }
@@ -150,20 +159,25 @@ pub fn render_expert_workspace(ui: &mut egui::Ui, ui_ctx: &ExpertViewContext) {
                             render_bento_item(
                                 ui,
                                 t!("gui-bento-xyz"),
-                                card_width,
-                                card_width,
+                                fluid_card_width,
+                                fluid_card_width,
                                 |ui| {
-                                    egui::Grid::new("bento_xyz").show(ui, |ui| {
-                                        ui.label("X");
-                                        ui.label(format!("{:.3}", xyz.x));
-                                        ui.end_row();
-                                        ui.label("Y");
-                                        ui.label(format!("{:.3}", xyz.y));
-                                        ui.end_row();
-                                        ui.label("Z");
-                                        ui.label(format!("{:.3}", xyz.z));
-                                        ui.end_row();
-                                    });
+                                    let rows = [
+                                        ("X", format!("{:.3}", xyz.x)),
+                                        ("Y", format!("{:.3}", xyz.y)),
+                                        ("Z", format!("{:.3}", xyz.z)),
+                                    ];
+                                    for (label, value) in rows {
+                                        ui.horizontal(|ui| {
+                                            ui.label(label);
+                                            ui.with_layout(
+                                                egui::Layout::right_to_left(egui::Align::Center),
+                                                |ui| {
+                                                    ui.label(egui::RichText::new(value).strong());
+                                                },
+                                            );
+                                        });
+                                    }
                                 },
                             );
                         }
@@ -171,20 +185,25 @@ pub fn render_expert_workspace(ui: &mut egui::Ui, ui_ctx: &ExpertViewContext) {
                             render_bento_item(
                                 ui,
                                 t!("gui-bento-indices"),
-                                card_width,
-                                card_width,
+                                fluid_card_width,
+                                fluid_card_width,
                                 |ui| {
-                                    egui::Grid::new("bento_indices").show(ui, |ui| {
-                                        ui.label(t!("gui-bento-chroma"));
-                                        ui.label(format!("{:.1}", chroma));
-                                        ui.end_row();
-                                        ui.label(t!("gui-bento-hue"));
-                                        ui.label(format!("{:.1}°", hue));
-                                        ui.end_row();
-                                        ui.label(t!("gui-bento-cct"));
-                                        ui.label(format!("{:.0}K", cct));
-                                        ui.end_row();
-                                    });
+                                    let rows = [
+                                        (t!("gui-bento-chroma"), format!("{:.1}", chroma)),
+                                        (t!("gui-bento-hue"), format!("{:.1}°", hue)),
+                                        (t!("gui-bento-cct"), format!("{:.0}K", cct)),
+                                    ];
+                                    for (label, value) in rows {
+                                        ui.horizontal(|ui| {
+                                            ui.label(label);
+                                            ui.with_layout(
+                                                egui::Layout::right_to_left(egui::Align::Center),
+                                                |ui| {
+                                                    ui.label(egui::RichText::new(value).strong());
+                                                },
+                                            );
+                                        });
+                                    }
                                 },
                             );
                         }
@@ -192,8 +211,8 @@ pub fn render_expert_workspace(ui: &mut egui::Ui, ui_ctx: &ExpertViewContext) {
                             render_bento_item(
                                 ui,
                                 t!("gui-bento-peak"),
-                                card_width,
-                                card_width,
+                                fluid_card_width,
+                                fluid_card_width,
                                 |ui| {
                                     ui.vertical_centered(|ui| {
                                         ui.label(
@@ -219,8 +238,8 @@ pub fn render_expert_workspace(ui: &mut egui::Ui, ui_ctx: &ExpertViewContext) {
                             render_bento_item(
                                 ui,
                                 t!("gui-bento-srgb"),
-                                card_width,
-                                card_width,
+                                fluid_card_width,
+                                fluid_card_width,
                                 |ui| {
                                     ui.horizontal(|ui| {
                                         let (r, g, b) = res.rgb_u8();
@@ -259,8 +278,8 @@ pub fn render_expert_workspace(ui: &mut egui::Ui, ui_ctx: &ExpertViewContext) {
                                 render_bento_item(
                                     ui,
                                     t!("gui-bento-cri"),
-                                    card_width,
-                                    card_width,
+                                    fluid_card_width,
+                                    fluid_card_width,
                                     |ui| {
                                         ui.centered_and_justified(|ui| {
                                             ui.label(

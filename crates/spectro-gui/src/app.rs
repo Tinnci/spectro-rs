@@ -65,6 +65,7 @@ pub struct SpectroApp {
 
     // Theme and UX
     theme_config: ThemeConfig,
+    theme_dirty: bool,
 
     // Continuous measurement
     is_continuous: bool,
@@ -87,8 +88,7 @@ impl SpectroApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         // Load theme configuration
         let theme_config = ThemeConfig::load_or_default("spectro_theme.json");
-        let visuals = theme_config.to_visuals();
-        cc.egui_ctx.set_visuals(visuals);
+        theme_config.apply_to_ctx(&cc.egui_ctx);
 
         let (cmd_tx, cmd_rx) = unbounded();
         let (update_tx, update_rx) = unbounded();
@@ -122,6 +122,7 @@ impl SpectroApp {
             show_history_panel: true,
             inspector: DeviceInspector::new(),
             theme_config,
+            theme_dirty: false,
             is_continuous: false,
             continuous_interval: 2.0,
             last_measurement_time: None,
@@ -295,6 +296,13 @@ impl SpectroApp {
 
 impl eframe::App for SpectroApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // === Unified Theme Application (SSoT) ===
+        if self.theme_dirty {
+            self.theme_config.apply_to_ctx(ctx);
+            let _ = self.theme_config.save("spectro_theme.json");
+            self.theme_dirty = false;
+        }
+
         // Handle updates from hardware thread
         while let Ok(update) = self.update_rx.try_recv() {
             match update {
@@ -329,6 +337,23 @@ impl eframe::App for SpectroApp {
             }
         }
 
+        // === Dynamic Window Size Management (SSoT) ===
+        let mut min_width = self.theme_config.layout.window_min_width;
+        let min_height = self.theme_config.layout.window_min_height;
+
+        if self.is_expert_mode {
+            if self.show_history_panel {
+                min_width += self.theme_config.layout.history_min_width;
+            }
+            if self.inspector.visible {
+                min_width += self.theme_config.layout.inspector_min_width;
+            }
+        }
+
+        ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(egui::vec2(
+            min_width, min_height,
+        )));
+
         // === Top Panel: Branding & Mode Switch ===
         egui::TopBottomPanel::top("top_panel")
             .frame(
@@ -359,10 +384,7 @@ impl eframe::App for SpectroApp {
                         // Theme toggle
                         if ui.button(self.theme_config.mode.label()).clicked() {
                             self.theme_config.mode = self.theme_config.mode.next();
-                            let visuals = self.theme_config.to_visuals();
-                            ctx.set_visuals(visuals);
-                            // Persist the new theme choice
-                            let _ = self.theme_config.save("spectro_theme.json");
+                            self.theme_dirty = true;
                         }
 
                         ui.separator();
@@ -580,6 +602,7 @@ impl eframe::App for SpectroApp {
                 selected_illuminant: &mut self.selected_illuminant,
                 selected_observer: &mut self.selected_observer,
                 theme_config: &mut self.theme_config,
+                dirty: &mut self.theme_dirty,
             },
         );
 
@@ -605,6 +628,7 @@ impl eframe::App for SpectroApp {
                 &HistoryContext {
                     history: &self.measurement_history,
                     delta_e_tolerance: self.delta_e_tolerance,
+                    layout: &self.theme_config.layout,
                 },
             );
 
@@ -622,9 +646,9 @@ impl eframe::App for SpectroApp {
         if self.is_expert_mode && self.inspector.visible {
             egui::SidePanel::right("expert_panel")
                 .resizable(true)
-                .default_width(260.0)
-                .min_width(160.0)
-                .max_width(350.0)
+                .default_width(self.theme_config.layout.inspector_default_width)
+                .min_width(self.theme_config.layout.inspector_min_width)
+                .max_width(self.theme_config.layout.inspector_max_width)
                 .show(ctx, |ui| {
                     let ctx = InspectorContext {
                         device_info: &self.device_info,
@@ -634,6 +658,7 @@ impl eframe::App for SpectroApp {
                         last_result: self.last_result.as_ref(),
                         last_tm30: self.last_tm30.as_ref(),
                         history: &self.measurement_history,
+                        layout: &self.theme_config.layout,
                     };
                     self.inspector.render(ui, &ctx);
                 });
@@ -668,6 +693,7 @@ impl eframe::App for SpectroApp {
                                         ui,
                                         &ExpertViewContext {
                                             last_result: self.last_result.as_ref(),
+                                            layout: &self.theme_config.layout,
                                         },
                                     );
                                 } else {
@@ -682,10 +708,11 @@ impl eframe::App for SpectroApp {
                                                 self.calculate_delta_e_76(lab)
                                             }),
                                             delta_e_tolerance: self.delta_e_tolerance,
+                                            layout: &self.theme_config.layout,
                                         },
                                     );
                                 }
-                                ui.add_space(40.0);
+                                ui.add_space(self.theme_config.layout.spacing * 4.0);
                             });
                         });
                     });
@@ -696,6 +723,7 @@ impl eframe::App for SpectroApp {
                     &self.cmd_tx,
                     &mut self.is_busy,
                     &self.status_msg,
+                    &self.theme_config.layout,
                 );
 
                 // Mode Guidance reminder (if we're busy measuring and not in the wizard)
@@ -708,7 +736,7 @@ impl eframe::App for SpectroApp {
                         MeasurementMode::Emissive => "EMISSIVE",
                         MeasurementMode::Ambient => "AMBIENT",
                     };
-                    CalibrationWizard::render_dial_check(ctx, highlight);
+                    CalibrationWizard::render_dial_check(ctx, highlight, &self.theme_config.layout);
                 }
             });
 

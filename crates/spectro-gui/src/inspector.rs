@@ -88,7 +88,7 @@ impl DeviceInspector {
                 }
             });
         });
-        ui.add_space(10.0);
+        ui.add_space(ctx.layout.spacing);
 
         // Tab bar
         ui.horizontal(|ui| {
@@ -178,7 +178,7 @@ impl DeviceInspector {
     // ========================================================================
 
     fn render_device_info_tab(&self, ui: &mut egui::Ui, ctx: &InspectorContext) {
-        ui.add_space(5.0);
+        ui.add_space(ctx.layout.spacing * 0.5);
 
         // Basic Device Info
         ui.collapsing(t!("gui-device-info"), |ui| {
@@ -244,7 +244,7 @@ impl DeviceInspector {
                 );
             }
 
-            ui.add_space(5.0);
+            ui.add_space(ctx.layout.spacing * 0.5);
 
             // Emissive calibration coefficients
             if let Some(ref emis) = ctx.device_info.emis_coef {
@@ -274,7 +274,7 @@ impl DeviceInspector {
                 });
             }
 
-            ui.add_space(5.0);
+            ui.add_space(ctx.layout.spacing * 0.5);
 
             // Linearization polynomials
             if let Some(ref lin) = ctx.device_info.lin_normal {
@@ -315,11 +315,11 @@ impl DeviceInspector {
     }
 
     fn render_raw_sensor_tab(&self, ui: &mut egui::Ui, ctx: &InspectorContext) {
-        ui.add_space(5.0);
+        ui.add_space(ctx.layout.spacing * 0.5);
 
         if let Some(data) = ctx.last_result {
             ui.label(egui::RichText::new("Spectral Values (380-780nm, 10nm steps)").strong());
-            ui.add_space(5.0);
+            ui.add_space(ctx.layout.spacing * 0.5);
 
             // Scrollable table of values
             egui::ScrollArea::vertical()
@@ -353,7 +353,7 @@ impl DeviceInspector {
                         });
                 });
 
-            ui.add_space(10.0);
+            ui.add_space(ctx.layout.spacing);
 
             // Statistics
             ui.collapsing("📊 Statistics", |ui| {
@@ -385,7 +385,7 @@ impl DeviceInspector {
     }
 
     fn render_algorithm_tab(&self, ui: &mut egui::Ui, ctx: &InspectorContext) {
-        ui.add_space(5.0);
+        ui.add_space(ctx.layout.spacing * 0.5);
 
         ui.collapsing("🎯 White Point Reference", |ui| {
             let wp = illuminant::D65_2;
@@ -410,7 +410,7 @@ impl DeviceInspector {
 
         ui.collapsing("📐 Observer Functions", |ui| {
             ui.label("Currently using: CIE 1931 2° Standard Observer");
-            ui.add_space(5.0);
+            ui.add_space(ctx.layout.spacing * 0.5);
 
             // Option to show CMF plot
             ui.horizontal(|ui| {
@@ -421,7 +421,7 @@ impl DeviceInspector {
 
         ui.collapsing("🔄 Conversion Pipeline", |ui| {
             ui.label(egui::RichText::new("Data Flow:").strong());
-            ui.add_space(5.0);
+            ui.add_space(ctx.layout.spacing * 0.5);
 
             let pipeline = [
                 "1. Raw Sensor (128 pixels)",
@@ -451,7 +451,7 @@ impl DeviceInspector {
                 let lab = xyz_norm.to_lab(illuminant::D65_2);
 
                 ui.label(format!("Mode: {:?}", data.spectrum.mode));
-                ui.add_space(5.0);
+                ui.add_space(ctx.layout.spacing * 0.5);
 
                 egui::Grid::new("calc_grid")
                     .num_columns(2)
@@ -554,7 +554,7 @@ impl DeviceInspector {
             }
         });
 
-        ui.add_space(10.0);
+        ui.add_space(ctx.layout.spacing);
         ui.label("The horseshoe-shaped region represents all colors visible to the human eye. The red dot indicates the most recent measurement.");
     }
 
@@ -565,7 +565,7 @@ impl DeviceInspector {
 
         if let Some(metrics) = ctx.last_tm30 {
             let visualizer = crate::tm30_gui::Tm30Visualizer::new(metrics.clone());
-            visualizer.ui(ui);
+            visualizer.ui(ui, ctx.layout);
         } else if ctx.last_result.is_some() {
             // Centered message for TM-30 not available
             let available = ui.available_size();
@@ -589,7 +589,7 @@ impl DeviceInspector {
     }
 
     fn render_trend_tab(&self, ui: &mut egui::Ui, ctx: &InspectorContext) {
-        ui.add_space(5.0);
+        ui.add_space(ctx.layout.spacing * 0.5);
 
         if ctx.history.is_empty() {
             self.render_empty_state(ui);
@@ -597,7 +597,7 @@ impl DeviceInspector {
         }
 
         ui.heading("📈 Measurement Trend");
-        ui.add_space(10.0);
+        ui.add_space(ctx.layout.spacing);
 
         // L* trend
         let l_points: PlotPoints = ctx
@@ -630,7 +630,7 @@ impl DeviceInspector {
             );
         });
 
-        ui.add_space(10.0);
+        ui.add_space(ctx.layout.spacing);
 
         // Statistics summary
         if let Some(last) = ctx.history.last() {
@@ -687,4 +687,6 @@ pub struct InspectorContext<'a> {
     pub last_tm30: Option<&'a TM30Metrics>,
     /// Measurement history
     pub history: &'a [MeasurementEntry],
+    /// Global layout configuration
+    pub layout: &'a crate::theme::LayoutConfig,
 }

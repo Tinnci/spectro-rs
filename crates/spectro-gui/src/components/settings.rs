@@ -8,6 +8,7 @@ pub struct SettingsContext<'a> {
     pub selected_illuminant: &'a mut Illuminant,
     pub selected_observer: &'a mut Observer,
     pub theme_config: &'a mut ThemeConfig,
+    pub dirty: &'a mut bool,
 }
 
 pub fn render_settings_window(ctx: &egui::Context, ui_ctx: &mut SettingsContext) {
@@ -119,6 +120,70 @@ pub fn render_settings_window(ctx: &egui::Context, ui_ctx: &mut SettingsContext)
                     if ui_ctx.theme_config.language != old_lang {
                         crate::i18n::init(ui_ctx.theme_config.language);
                         let _ = ui_ctx.theme_config.save("spectro_theme.json");
+                    }
+                    ui.end_row();
+                });
+
+            ui.add_space(20.0);
+            ui.separator();
+            ui.heading("📏 UI Layout");
+            ui.add_space(10.0);
+
+            egui::Grid::new("layout_settings_grid")
+                .num_columns(2)
+                .spacing([20.0, 10.0])
+                .show(ui, |ui| {
+                    ui.label("Item Spacing");
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut ui_ctx.theme_config.layout.spacing)
+                                .speed(0.5)
+                                .range(2.0..=32.0),
+                        )
+                        .changed()
+                    {
+                        *ui_ctx.dirty = true;
+                    }
+                    ui.end_row();
+
+                    ui.label("Bento Min Width");
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut ui_ctx.theme_config.layout.bento_min_width)
+                                .speed(1.0)
+                                .range(100.0..=400.0),
+                        )
+                        .changed()
+                    {
+                        *ui_ctx.dirty = true;
+                    }
+                    ui.end_row();
+
+                    ui.label("History Panel (Min)");
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut ui_ctx.theme_config.layout.history_min_width)
+                                .speed(1.0)
+                                .range(150.0..=400.0),
+                        )
+                        .changed()
+                    {
+                        *ui_ctx.dirty = true;
+                    }
+                    ui.end_row();
+
+                    ui.label("Inspector Panel (Min)");
+                    if ui
+                        .add(
+                            egui::DragValue::new(
+                                &mut ui_ctx.theme_config.layout.inspector_min_width,
+                            )
+                            .speed(1.0)
+                            .range(200.0..=500.0),
+                        )
+                        .changed()
+                    {
+                        *ui_ctx.dirty = true;
                     }
                     ui.end_row();
                 });

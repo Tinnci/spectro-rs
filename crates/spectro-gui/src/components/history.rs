@@ -7,6 +7,7 @@ use spectro_rs::{MeasurementMode, colorimetry::XYZ};
 pub struct HistoryContext<'a> {
     pub history: &'a [MeasurementEntry],
     pub delta_e_tolerance: f32,
+    pub layout: &'a crate::theme::LayoutConfig,
 }
 
 #[derive(Default)]
@@ -25,8 +26,8 @@ pub fn render_history_panel(ctx: &egui::Context, ui_ctx: &HistoryContext) -> His
 
     egui::SidePanel::left("history_panel")
         .resizable(true)
-        .default_width(180.0)
-        .min_width(120.0)
+        .default_width(ui_ctx.layout.history_default_width)
+        .min_width(ui_ctx.layout.history_min_width)
         .max_width(250.0)
         .show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -104,7 +105,7 @@ pub fn render_history_panel(ctx: &egui::Context, ui_ctx: &HistoryContext) -> His
                     }
                 });
 
-                ui.add_space(10.0);
+                ui.add_space(ui_ctx.layout.spacing);
                 ui.horizontal(|ui| {
                     if ui.button("CSV").clicked() {
                         action = HistoryAction::ExportCsv;
