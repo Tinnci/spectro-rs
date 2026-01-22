@@ -637,6 +637,7 @@ impl SpectroApp {
 
         let plot = Plot::new("spectral_plot")
             .view_aspect(2.5)
+            .height(200.0) // Minimum height regardless of aspect ratio
             .include_y(0.0)
             .include_x(380.0)
             .include_x(780.0)
@@ -1832,7 +1833,7 @@ impl eframe::App for SpectroApp {
             egui::SidePanel::left("history_panel")
                 .resizable(true)
                 .default_width(180.0)
-                .min_width(140.0)
+                .min_width(120.0)
                 .max_width(250.0)
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
@@ -1933,7 +1934,7 @@ impl eframe::App for SpectroApp {
             egui::SidePanel::right("expert_panel")
                 .resizable(true)
                 .default_width(260.0)
-                .min_width(180.0)
+                .min_width(160.0)
                 .max_width(350.0)
                 .show(ctx, |ui| {
                     self.render_expert_inspector(ui);
@@ -1948,11 +1949,13 @@ impl eframe::App for SpectroApp {
                     .inner_margin(egui::Margin::same(16.0)),
             )
             .show(ctx, |ui| {
-                if self.is_expert_mode {
-                    self.render_expert_workspace(ui);
-                } else {
-                    self.render_simple_workspace(ui);
-                }
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    if self.is_expert_mode {
+                        self.render_expert_workspace(ui);
+                    } else {
+                        self.render_simple_workspace(ui);
+                    }
+                });
 
                 // Calibration Wizard (extracted component)
                 self.calibration_wizard.render(
