@@ -35,7 +35,7 @@ pub fn render_history(ui: &mut egui::Ui, ui_ctx: &HistoryContext) -> HistoryActi
                     action = HistoryAction::Close;
                 }
 
-                let detach_icon = if ui_ctx.is_detached { "📥" } else { "⇗" };
+                let detach_icon = if ui_ctx.is_detached { "📥" } else { "📤" };
                 let detach_text = if ui_ctx.is_detached {
                     t!("gui-attach")
                 } else {

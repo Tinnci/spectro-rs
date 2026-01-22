@@ -294,12 +294,50 @@ impl ThemeConfig {
             style.spacing.item_spacing = egui::vec2(self.layout.spacing, self.layout.spacing);
             style.spacing.window_margin = egui::Margin::same(self.layout.spacing);
         });
+
+        // Load comprehensive emoji font to eliminate tofu
+        load_comprehensive_emoji_fonts(ctx);
     }
 
     /// Get current visuals
     pub fn to_visuals(&self) -> Visuals {
         self.mode.to_visuals()
     }
+}
+
+/// Load comprehensive emoji font to eliminate tofu (□) characters
+fn load_comprehensive_emoji_fonts(ctx: &egui::Context) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    // Ensure fonts are only loaded once
+    static FONTS_LOADED: AtomicBool = AtomicBool::new(false);
+
+    if FONTS_LOADED.swap(true, Ordering::Relaxed) {
+        return; // Already loaded
+    }
+
+    let mut fonts = egui::FontDefinitions::default();
+
+    // Embed the complete Noto Emoji font
+    fonts.font_data.insert(
+        "NotoEmoji-Complete".to_owned(),
+        egui::FontData::from_static(include_bytes!("../assets/fonts/NotoEmoji-Regular.ttf")),
+    );
+
+    // Insert emoji font at high priority in all font families (after default UI fonts)
+    fonts
+        .families
+        .entry(egui::FontFamily::Proportional)
+        .or_default()
+        .insert(1, "NotoEmoji-Complete".to_owned());
+
+    fonts
+        .families
+        .entry(egui::FontFamily::Monospace)
+        .or_default()
+        .insert(1, "NotoEmoji-Complete".to_owned());
+
+    ctx.set_fonts(fonts);
 }
 
 #[cfg(test)]

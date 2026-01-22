@@ -190,6 +190,12 @@ pub fn render_settings_window(ctx: &egui::Context, ui_ctx: &mut SettingsContext)
 
             ui.add_space(20.0);
             ui.separator();
+            ui.heading("🔍 Font Diagnostics");
+            ui.add_space(10.0);
+            crate::components::font_diag::render_font_diagnostics(ui);
+
+            ui.add_space(20.0);
+            ui.separator();
             ui.add_space(10.0);
 
             ui.horizontal(|ui| {

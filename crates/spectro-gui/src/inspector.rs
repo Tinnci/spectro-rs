@@ -90,7 +90,7 @@ impl DeviceInspector {
                     self.visible = false;
                 }
 
-                let detach_icon = if self.is_detached { "📥" } else { "⇗" };
+                let detach_icon = if self.is_detached { "📥" } else { "📤" };
                 let detach_text = if self.is_detached {
                     t!("gui-attach")
                 } else {
