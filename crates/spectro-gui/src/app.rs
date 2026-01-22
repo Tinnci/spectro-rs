@@ -644,31 +644,51 @@ impl eframe::App for SpectroApp {
             .frame(
                 egui::Frame::none()
                     .fill(panel_bg_dark_color(&ctx.style().visuals))
-                    .inner_margin(egui::Margin::same(16.0)),
+                    .inner_margin(egui::Margin::symmetric(16.0, 0.0)),
             )
             .show(ctx, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    if self.is_expert_mode {
-                        render_expert_workspace(
-                            ui,
-                            &ExpertViewContext {
-                                last_result: self.last_result.as_ref(),
-                            },
-                        );
-                    } else {
-                        render_simple_workspace(
-                            ui,
-                            &SimpleViewContext {
-                                last_result: self.last_result.as_ref(),
-                                calculate_delta_e: Box::new(|lab| self.calculate_delta_e(lab)),
-                                calculate_delta_e_76: Box::new(|lab| {
-                                    self.calculate_delta_e_76(lab)
-                                }),
-                                delta_e_tolerance: self.delta_e_tolerance,
-                            },
-                        );
-                    }
-                });
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        let available_width = ui.available_width();
+                        let content_max_width = 1000.0_f32.min(available_width);
+
+                        // Calculate horizontal offset to center the content block
+                        let offset_x = (available_width - content_max_width) / 2.0;
+
+                        // Create a centered content area with left-aligned children
+                        ui.horizontal(|ui| {
+                            ui.add_space(offset_x.max(0.0));
+                            ui.vertical(|ui| {
+                                ui.set_width(content_max_width);
+                                ui.add_space(24.0);
+
+                                if self.is_expert_mode {
+                                    render_expert_workspace(
+                                        ui,
+                                        &ExpertViewContext {
+                                            last_result: self.last_result.as_ref(),
+                                        },
+                                    );
+                                } else {
+                                    render_simple_workspace(
+                                        ui,
+                                        &SimpleViewContext {
+                                            last_result: self.last_result.as_ref(),
+                                            calculate_delta_e: Box::new(|lab| {
+                                                self.calculate_delta_e(lab)
+                                            }),
+                                            calculate_delta_e_76: Box::new(|lab| {
+                                                self.calculate_delta_e_76(lab)
+                                            }),
+                                            delta_e_tolerance: self.delta_e_tolerance,
+                                        },
+                                    );
+                                }
+                                ui.add_space(40.0);
+                            });
+                        });
+                    });
 
                 // Calibration Wizard (extracted component)
                 self.calibration_wizard.render(
