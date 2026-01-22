@@ -18,6 +18,7 @@ gui-reconnect = Reconnect
 gui-stop-loop = Stop Loop
 gui-continuous = Continuous
 gui-close = Close
+gui-hide = Hide
 gui-cancel = Cancel
 gui-clear = Clear
 
@@ -87,3 +88,35 @@ gui-tm30-bin = Bin
 gui-tm30-rf = Rf
 gui-tm30-chroma-shift = Chroma Shift
 gui-tm30-hue-shift = Hue Shift
+# Bento labels
+gui-bento-lab = LAB
+gui-bento-xyz = XYZ
+gui-bento-srgb = sRGB
+gui-bento-cct = CCT
+gui-bento-cri = CRI (Ra)
+gui-bento-peak = PEAK λ
+gui-bento-status = STATUS
+gui-bento-mode = MODE
+gui-bento-delta-e = ΔE*00
+gui-bento-chroma = CHROMA
+gui-bento-hue = HUE
+gui-bento-stability = STABILITY
+gui-bento-spectrum = SPECTRUM
+gui-bento-reference = REFERENCE
+gui-bento-current = CURRENT
+gui-bento-history = HISTORY
+gui-bento-indices = INDICES
+gui-bento-sensor = SENSOR
+gui-bento-info = DEVICE INFO
+
+# Error messages
+gui-error-no-device = ❌ No device found
+gui-error-calibration-failed = ❌ Calibration failed
+gui-error-measurement-failed = ❌ Measurement failed
+gui-error-no-device-short = ⚠️ No device
+
+# Status messages
+gui-status-connected = ✅ Device connected
+gui-status-calibrating = 🎯 Calibrating... Place device on white tile
+gui-status-calibration-ok = ✅ Calibration successful
+gui-status-measuring = 📸 Measuring...

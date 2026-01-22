@@ -18,6 +18,7 @@ gui-reconnect = 重新连接
 gui-stop-loop = 停止循环
 gui-continuous = 连续测量
 gui-close = 关闭
+gui-hide = 收起
 gui-cancel = 取消
 gui-clear = 清除
 
@@ -87,3 +88,35 @@ gui-tm30-bin = 分区
 gui-tm30-rf = Rf
 gui-tm30-chroma-shift = 色度偏移
 gui-tm30-hue-shift = 色相偏移
+# Bento 标签
+gui-bento-lab = LAB 色彩
+gui-bento-xyz = XYZ 刺激值
+gui-bento-srgb = sRGB 颜色
+gui-bento-cct = 相关色温 (CCT)
+gui-bento-cri = 显色指数 (Ra)
+gui-bento-peak = 峰值波长 λ
+gui-bento-status = 设备状态
+gui-bento-mode = 测量模式
+gui-bento-delta-e = 色差 ΔE*00
+gui-bento-chroma = 彩度 C*
+gui-bento-hue = 色相角 h°
+gui-bento-stability = 稳定性趋势
+gui-bento-spectrum = 光谱功率分布
+gui-bento-reference = 参考色
+gui-bento-current = 当前测量
+gui-bento-history = 历史序列
+gui-bento-indices = 颜色指标
+gui-bento-sensor = 传感器
+gui-bento-info = 设备详细信息
+
+# 错误消息
+gui-error-no-device = ❌ 未找到设备
+gui-error-calibration-failed = ❌ 校准失败
+gui-error-measurement-failed = ❌ 测量失败
+gui-error-no-device-short = ⚠️ 无设备
+
+# 状态消息
+gui-status-connected = ✅ 设备已连接
+gui-status-calibrating = 🎯 正在校准... 请将设备放在白板上
+gui-status-calibration-ok = ✅ 校准成功
+gui-status-measuring = 📸 正在测量...

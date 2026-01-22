@@ -29,6 +29,47 @@ use crate::theme::{
 };
 
 // ============================================================================
+// UI Helpers
+// ============================================================================
+
+fn render_bento_item<R>(
+    ui: &mut egui::Ui,
+    title: String,
+    add_contents: impl FnOnce(&mut egui::Ui) -> R,
+) -> R {
+    let visuals = &ui.ctx().style().visuals;
+
+    egui::Frame::none()
+        .fill(info_panel_color(visuals))
+        .stroke(egui::Stroke::new(1.0, border_color(visuals)))
+        .rounding(6.0)
+        .inner_margin(egui::Margin::same(12.0))
+        .show(ui, |ui| {
+            ui.vertical(|ui| {
+                ui.label(
+                    egui::RichText::new(title.to_uppercase())
+                        .size(10.0)
+                        .color(muted_text_color(visuals))
+                        .strong(),
+                );
+                ui.add_space(4.0);
+                add_contents(ui)
+            })
+            .inner
+        })
+        .inner
+}
+
+#[expect(
+    dead_code,
+    reason = "Utility icon for planned descriptive tooltips to reduce UI text density"
+)]
+fn help_icon(ui: &mut egui::Ui, text: &str) {
+    ui.label(egui::RichText::new("ⓘ").color(muted_text_color(ui.visuals())))
+        .on_hover_text(text);
+}
+
+// ============================================================================
 // Application State
 // ============================================================================
 
@@ -64,6 +105,8 @@ pub struct SpectroApp {
     expert_tab: ExpertTab,
     show_reference_input: bool,
     show_settings: bool,
+    show_history_panel: bool,
+    show_inspector_panel: bool,
 
     // Theme and UX
     theme_config: ThemeConfig,
@@ -138,12 +181,12 @@ impl SpectroApp {
                                 device = Some(d);
                                 update_tx.send(UIUpdate::Connected(ext_info)).ok();
                                 update_tx
-                                    .send(UIUpdate::Status("✅ Device connected".into()))
+                                    .send(UIUpdate::Status(t!("gui-status-connected")))
                                     .ok();
                             }
-                            Err(e) => {
+                            Err(_e) => {
                                 update_tx
-                                    .send(UIUpdate::Error(format!("❌ Discovery failed: {}", e)))
+                                    .send(UIUpdate::Error(t!("gui-error-no-device")))
                                     .ok();
                             }
                         }
@@ -152,29 +195,24 @@ impl SpectroApp {
                     DeviceCommand::Calibrate => {
                         if let Some(ref mut d) = device {
                             update_tx
-                                .send(UIUpdate::Status(
-                                    "🎯 Calibrating... Place device on white tile".into(),
-                                ))
+                                .send(UIUpdate::Status(t!("gui-status-calibrating")))
                                 .ok();
 
                             match d.calibrate() {
                                 Ok(_) => {
                                     update_tx
-                                        .send(UIUpdate::Status("✅ Calibration successful".into()))
+                                        .send(UIUpdate::Status(t!("gui-status-calibration-ok")))
                                         .ok();
                                 }
-                                Err(e) => {
+                                Err(_e) => {
                                     update_tx
-                                        .send(UIUpdate::Error(format!(
-                                            "❌ Calibration failed: {}",
-                                            e
-                                        )))
+                                        .send(UIUpdate::Error(t!("gui-error-calibration-failed")))
                                         .ok();
                                 }
                             }
                         } else {
                             update_tx
-                                .send(UIUpdate::Error("⚠️ No device connected".into()))
+                                .send(UIUpdate::Error(t!("gui-error-no-device-short")))
                                 .ok();
                         }
                     }
@@ -182,7 +220,7 @@ impl SpectroApp {
                     DeviceCommand::Measure(mode) => {
                         if let Some(ref mut d) = device {
                             update_tx
-                                .send(UIUpdate::Status("📊 Measuring...".into()))
+                                .send(UIUpdate::Status(t!("gui-status-measuring")))
                                 .ok();
 
                             match d.measure(mode) {
@@ -206,16 +244,13 @@ impl SpectroApp {
                                         update_tx.send(UIUpdate::Disconnected).ok();
                                     }
                                     update_tx
-                                        .send(UIUpdate::Error(format!(
-                                            "❌ Measurement failed: {}",
-                                            e
-                                        )))
+                                        .send(UIUpdate::Error(t!("gui-error-measurement-failed")))
                                         .ok();
                                 }
                             }
                         } else {
                             update_tx
-                                .send(UIUpdate::Error("⚠️ No device connected".into()))
+                                .send(UIUpdate::Error(t!("gui-error-no-device-short")))
                                 .ok();
                         }
                     }
@@ -247,6 +282,8 @@ impl SpectroApp {
             expert_tab: ExpertTab::DeviceInfo,
             show_reference_input: false,
             show_settings: false,
+            show_history_panel: true,
+            show_inspector_panel: true,
             theme_config,
             is_continuous: false,
             continuous_interval: 2.0,
@@ -687,134 +724,128 @@ impl SpectroApp {
             let (chroma, hue) = (lab.chroma(), lab.hue());
             let cct = res.cct;
 
-            // Peak and centroid
-            let peak_idx = res
-                .spectrum
-                .values
-                .iter()
-                .enumerate()
-                .skip(4)
-                .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
-                .map(|(i, _)| i)
-                .unwrap_or(0);
-            let peak_wl = 380 + peak_idx * 10;
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing = egui::vec2(12.0, 12.0);
 
-            let total_power: f32 = res.spectrum.values.iter().skip(4).sum();
-            let centroid: f32 = res
-                .spectrum
-                .values
-                .iter()
-                .enumerate()
-                .skip(4)
-                .map(|(i, v)| (380 + i * 10) as f32 * v)
-                .sum::<f32>()
-                / total_power.max(1e-6);
-
-            ui.columns(3, |cols| {
-                // Column 1: XYZ & Lab
-                cols[0].group(|ui| {
-                    ui.heading("CIE Color Spaces");
-                    ui.add_space(5.0);
-                    egui::Grid::new("xyz_lab_grid")
-                        .num_columns(2)
-                        .spacing([20.0, 4.0])
-                        .show(ui, |ui| {
-                            ui.label("X:");
-                            ui.label(format!("{:.3}", xyz.x));
-                            ui.end_row();
-                            ui.label("Y:");
-                            ui.label(format!("{:.3}", xyz.y));
-                            ui.end_row();
-                            ui.label("Z:");
-                            ui.label(format!("{:.3}", xyz.z));
-                            ui.end_row();
-                            ui.separator();
-                            ui.separator();
-                            ui.end_row();
-                            ui.label("L*:");
-                            ui.label(format!("{:.2}", lab.l));
-                            ui.end_row();
-                            ui.label("a*:");
-                            ui.label(format!("{:.2}", lab.a));
-                            ui.end_row();
-                            ui.label("b*:");
-                            ui.label(format!("{:.2}", lab.b));
-                            ui.end_row();
-                        });
+                // Bento 1: LAB
+                render_bento_item(ui, t!("gui-bento-lab"), |ui| {
+                    ui.set_min_width(100.0);
+                    egui::Grid::new("bento_lab").show(ui, |ui| {
+                        ui.label("L*");
+                        ui.label(format!("{:.2}", lab.l));
+                        ui.end_row();
+                        ui.label("a*");
+                        ui.label(format!("{:.2}", lab.a));
+                        ui.end_row();
+                        ui.label("b*");
+                        ui.label(format!("{:.2}", lab.b));
+                        ui.end_row();
+                    });
                 });
 
-                // Column 2: LCh & CCT
-                cols[1].group(|ui| {
-                    ui.heading("Derived Values");
-                    ui.add_space(5.0);
-                    egui::Grid::new("lch_cct_grid")
-                        .num_columns(2)
-                        .spacing([20.0, 4.0])
-                        .show(ui, |ui| {
-                            ui.label("C* (Chroma):");
-                            ui.label(format!("{:.2}", chroma));
-                            ui.end_row();
-                            ui.label("h° (Hue):");
-                            ui.label(format!("{:.1}°", hue));
-                            ui.end_row();
-                            ui.separator();
-                            ui.separator();
-                            ui.end_row();
-                            ui.label("CCT:");
-                            ui.label(format!("{:.0} K", cct));
-                            ui.end_row();
-                            ui.label("Peak λ:");
-                            ui.label(format!("{} nm", peak_wl));
-                            ui.end_row();
-                            ui.label("Centroid:");
-                            ui.label(format!("{:.1} nm", centroid));
-                            ui.end_row();
-                        });
+                // Bento 2: XYZ
+                render_bento_item(ui, t!("gui-bento-xyz"), |ui| {
+                    ui.set_min_width(100.0);
+                    egui::Grid::new("bento_xyz").show(ui, |ui| {
+                        ui.label("X");
+                        ui.label(format!("{:.3}", xyz.x));
+                        ui.end_row();
+                        ui.label("Y");
+                        ui.label(format!("{:.3}", xyz.y));
+                        ui.end_row();
+                        ui.label("Z");
+                        ui.label(format!("{:.3}", xyz.z));
+                        ui.end_row();
+                    });
                 });
 
-                // Column 3: sRGB
-                cols[2].group(|ui| {
-                    ui.heading("sRGB Output");
-                    ui.add_space(5.0);
-
-                    let y_max = xyz.y.max(0.01);
-                    let xyz_norm = XYZ {
-                        x: xyz.x / y_max,
-                        y: xyz.y / y_max,
-                        z: xyz.z / y_max,
-                    };
-                    let (r, g, b) = xyz_norm.to_srgb();
-
-                    // Color preview
-                    let (rect, _) =
-                        ui.allocate_exact_size(egui::vec2(80.0, 40.0), egui::Sense::hover());
-                    ui.painter()
-                        .rect_filled(rect, 4.0, egui::Color32::from_rgb(r, g, b));
-
-                    egui::Grid::new("rgb_grid")
-                        .num_columns(2)
-                        .spacing([20.0, 4.0])
-                        .show(ui, |ui| {
-                            ui.label("R:");
-                            ui.label(format!("{}", r));
-                            ui.end_row();
-                            ui.label("G:");
-                            ui.label(format!("{}", g));
-                            ui.end_row();
-                            ui.label("B:");
-                            ui.label(format!("{}", b));
-                            ui.end_row();
-                            ui.label("Hex:");
-                            ui.label(format!("#{:02X}{:02X}{:02X}", r, g, b));
-                            ui.end_row();
-                        });
+                // Bento 3: Color Indices
+                render_bento_item(ui, t!("gui-bento-indices"), |ui| {
+                    ui.set_min_width(115.0);
+                    egui::Grid::new("bento_indices").show(ui, |ui| {
+                        ui.label(t!("gui-bento-chroma"));
+                        ui.label(format!("{:.1}", chroma));
+                        ui.end_row();
+                        ui.label(t!("gui-bento-hue"));
+                        ui.label(format!("{:.1}°", hue));
+                        ui.end_row();
+                        ui.label(t!("gui-bento-cct"));
+                        ui.label(format!("{:.0}K", cct));
+                        ui.end_row();
+                    });
                 });
+
+                // Bento 4: Peak Information
+                render_bento_item(ui, t!("gui-bento-peak"), |ui| {
+                    ui.set_min_width(115.0);
+                    ui.vertical(|ui| {
+                        ui.label(
+                            egui::RichText::new(format!("{:.1} nm", res.peak_wavelength()))
+                                .size(24.0)
+                                .strong(),
+                        );
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "Centroid: {:.1}nm",
+                                res.centroid_wavelength()
+                            ))
+                            .weak(),
+                        );
+                    });
+                });
+
+                // Bento 5: sRGB
+                render_bento_item(ui, t!("gui-bento-srgb"), |ui| {
+                    ui.set_min_width(130.0);
+                    ui.horizontal(|ui| {
+                        let (r, g, b) = res.rgb_u8();
+                        let (rect, _) =
+                            ui.allocate_at_least(egui::vec2(40.0, 40.0), egui::Sense::hover());
+                        ui.painter()
+                            .rect_filled(rect, 4.0, egui::Color32::from_rgb(r, g, b));
+                        ui.painter().rect_stroke(
+                            rect,
+                            4.0,
+                            egui::Stroke::new(1.0, border_color(ui.visuals())),
+                        );
+                        ui.add_space(8.0);
+                        ui.vertical(|ui| {
+                            ui.label(format!("RGB: {}, {}, {}", r, g, b));
+                            ui.label(
+                                egui::RichText::new(format!("#{:02X}{:02X}{:02X}", r, g, b))
+                                    .monospace()
+                                    .weak(),
+                            );
+                        });
+                    });
+                });
+
+                // Bento 6: CRI (if available)
+                if let Some(cri) = res.cri {
+                    render_bento_item(ui, t!("gui-bento-cri"), |ui| {
+                        ui.set_min_width(75.0);
+                        ui.centered_and_justified(|ui| {
+                            ui.label(
+                                egui::RichText::new(format!("{:.0}", cri))
+                                    .size(28.0)
+                                    .strong(),
+                            );
+                        });
+                    });
+                }
             });
         }
     }
 
     fn render_expert_inspector(&mut self, ui: &mut egui::Ui) {
-        ui.heading(t!("gui-device-inspector"));
+        ui.horizontal(|ui| {
+            ui.heading(t!("gui-device-inspector"));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button("⏵").on_hover_text(t!("gui-hide")).clicked() {
+                    self.show_inspector_panel = false;
+                }
+            });
+        });
         ui.add_space(10.0);
 
         // Tab bar
@@ -853,14 +884,17 @@ impl SpectroApp {
 
         ui.separator();
 
-        match self.expert_tab {
-            ExpertTab::DeviceInfo => self.render_device_info_tab(ui),
-            ExpertTab::RawSensor => self.render_raw_sensor_tab(ui),
-            ExpertTab::Algorithm => self.render_algorithm_tab(ui),
-            ExpertTab::Chromaticity => self.render_chromaticity_tab(ui),
-            ExpertTab::ColorQuality => self.render_color_quality_tab(ui),
-            ExpertTab::Trend => self.render_trend_tab(ui),
-        }
+        // Wrap content in ScrollArea for better responsiveness
+        egui::ScrollArea::both()
+            .auto_shrink([false, false])
+            .show(ui, |ui| match self.expert_tab {
+                ExpertTab::DeviceInfo => self.render_device_info_tab(ui),
+                ExpertTab::RawSensor => self.render_raw_sensor_tab(ui),
+                ExpertTab::Algorithm => self.render_algorithm_tab(ui),
+                ExpertTab::Chromaticity => self.render_chromaticity_tab(ui),
+                ExpertTab::ColorQuality => self.render_color_quality_tab(ui),
+                ExpertTab::Trend => self.render_trend_tab(ui),
+            });
     }
 
     fn render_trend_tab(&self, ui: &mut egui::Ui) {
@@ -1404,6 +1438,38 @@ impl eframe::App for SpectroApp {
                             self.is_expert_mode = !self.is_expert_mode;
                         }
 
+                        if self.is_expert_mode {
+                            ui.separator();
+
+                            // Inspector toggle
+                            let inspector_btn = if self.show_inspector_panel {
+                                egui::RichText::new("🔍").strong()
+                            } else {
+                                egui::RichText::new("🔍").weak()
+                            };
+                            if ui
+                                .selectable_label(self.show_inspector_panel, inspector_btn)
+                                .on_hover_text(t!("gui-device-inspector"))
+                                .clicked()
+                            {
+                                self.show_inspector_panel = !self.show_inspector_panel;
+                            }
+
+                            // History toggle
+                            let history_btn = if self.show_history_panel {
+                                egui::RichText::new("📋").strong()
+                            } else {
+                                egui::RichText::new("📋").weak()
+                            };
+                            if ui
+                                .selectable_label(self.show_history_panel, history_btn)
+                                .on_hover_text(t!("gui-history-title"))
+                                .clicked()
+                            {
+                                self.show_history_panel = !self.show_history_panel;
+                            }
+                        }
+
                         ui.separator();
 
                         // Settings button
@@ -1762,13 +1828,21 @@ impl eframe::App for SpectroApp {
         }
 
         // === Left Panel: History (Expert mode only) ===
-        if self.is_expert_mode && !self.measurement_history.is_empty() {
+        if self.is_expert_mode && !self.measurement_history.is_empty() && self.show_history_panel {
             egui::SidePanel::left("history_panel")
                 .resizable(true)
-                .default_width(200.0)
-                .min_width(150.0)
+                .default_width(180.0)
+                .min_width(140.0)
+                .max_width(250.0)
                 .show(ctx, |ui| {
-                    ui.heading(t!("gui-history-title"));
+                    ui.horizontal(|ui| {
+                        ui.heading(t!("gui-history-title"));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.button("⏴").on_hover_text(t!("gui-hide")).clicked() {
+                                self.show_history_panel = false;
+                            }
+                        });
+                    });
                     ui.separator();
 
                     egui::ScrollArea::vertical().show(ui, |ui| {
@@ -1855,11 +1929,12 @@ impl eframe::App for SpectroApp {
         }
 
         // === Right Panel: Expert Inspector ===
-        if self.is_expert_mode {
+        if self.is_expert_mode && self.show_inspector_panel {
             egui::SidePanel::right("expert_panel")
                 .resizable(true)
-                .default_width(280.0)
-                .min_width(200.0)
+                .default_width(260.0)
+                .min_width(180.0)
+                .max_width(350.0)
                 .show(ctx, |ui| {
                     self.render_expert_inspector(ui);
                 });

@@ -34,6 +34,48 @@ pub struct MeasurementResult {
     pub cri: Option<f32>,
 }
 
+impl MeasurementResult {
+    /// Get RGB values in 0-255 range
+    pub fn rgb_u8(&self) -> (u8, u8, u8) {
+        (
+            (self.rgb.0.clamp(0.0, 1.0) * 255.0).round() as u8,
+            (self.rgb.1.clamp(0.0, 1.0) * 255.0).round() as u8,
+            (self.rgb.2.clamp(0.0, 1.0) * 255.0).round() as u8,
+        )
+    }
+
+    /// Calculate the peak wavelength (nm)
+    pub fn peak_wavelength(&self) -> f32 {
+        let (idx, _) = self.spectrum.values.iter().enumerate().fold(
+            (0, 0.0f32),
+            |(max_idx, max_val), (idx, &val)| {
+                if val > max_val {
+                    (idx, val)
+                } else {
+                    (max_idx, max_val)
+                }
+            },
+        );
+        380.0 + idx as f32 * 10.0
+    }
+
+    /// Calculate the centroid wavelength (nm)
+    pub fn centroid_wavelength(&self) -> f32 {
+        let total: f32 = self.spectrum.values.iter().sum();
+        if total < 1e-6 {
+            return 550.0;
+        }
+        let weighted_sum: f32 = self
+            .spectrum
+            .values
+            .iter()
+            .enumerate()
+            .map(|(i, v)| (380.0 + i as f32 * 10.0) * v)
+            .sum();
+        weighted_sum / total
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SpectralData {
     pub wavelengths: Vec<f32>,
