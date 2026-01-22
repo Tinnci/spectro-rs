@@ -46,6 +46,9 @@ pub const Z_BAR_10: [f32; 41] = [
     0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
 ];
 
+// X_BAR_10, Y_BAR_10, Z_BAR_10 are already pub const.
+// No changes needed to visibility.
+
 /// CIE 2015 Physiologically-based LMS Color Matching Functions (2-degree observer, 10nm)
 /// These represent the real cone response of the human eye.
 pub const L_BAR_2015: [f32; 41] = [
@@ -653,6 +656,109 @@ impl XYZ {
             y: y * 100.0 / weighting::SUM_WY_D65_2_10,
             z: z * 100.0 / weighting::SUM_WY_D65_2_10,
         }
+    }
+
+    /// Convert XYZ to CIE 1960 UCS (u, v) coordinates.
+    /// This is used for CCT calculation and CRI reference illuminant alignment.
+    pub fn to_uv_1960(&self) -> (f32, f32) {
+        let denom = self.x + 15.0 * self.y + 3.0 * self.z;
+        if denom.abs() < 1e-9 {
+            return (0.0, 0.0);
+        }
+        let u = (4.0 * self.x) / denom;
+        let v = (6.0 * self.y) / denom;
+        (u, v)
+    }
+
+    /// Convert XYZ to CIE 1964 (U*, V*, W*) color space.
+    /// `white_uv`: The (u, v) coordinates of the white point.
+    pub fn to_uvw_1964(&self, white_uv: (f32, f32)) -> (f32, f32, f32) {
+        let (u, v) = self.to_uv_1960();
+        let w_star = 25.0 * self.y.powf(1.0 / 3.0) - 17.0;
+        let u_star = 13.0 * w_star * (u - white_uv.0);
+        let v_star = 13.0 * w_star * (v - white_uv.1);
+        (u_star, v_star, w_star)
+    }
+}
+
+pub mod generation {
+    /// CIE Standard Illuminant A/D series generation.
+    ///
+    /// CIE S0, S1, S2 spectral power components for Daylight reconstruction (380nm-780nm, 10nm steps)
+    pub const S0: [f32; 41] = [
+        0.0, 0.0, 33.4, 37.4, 117.4, 117.8, 114.9, 115.9, 108.8, 109.3, 107.8, 104.8, 107.7, 104.4,
+        104.0, 100.0, 96.0, 95.1, 89.1, 90.5, 90.3, 88.4, 84.0, 85.1, 81.9, 82.6, 84.9, 81.3, 71.9,
+        74.3, 76.4, 63.3, 71.7, 77.0, 65.2, 47.7, 68.6, 65.0, 66.0, 61.0, 53.3,
+    ];
+    pub const S1: [f32; 41] = [
+        0.0, 0.0, -1.1, -0.5, -0.7, -1.2, -2.6, -2.9, -2.8, -4.5, -6.1, -7.6, -9.7, -11.7, -12.2,
+        -13.6, -12.0, -13.3, -12.9, -10.6, -11.6, -10.8, -8.1, -10.3, -11.0, -11.5, -10.8, -10.9,
+        -8.8, -7.3, -12.9, -15.8, -15.1, -12.2, -10.2, -8.6, -12.0, -14.6, -15.1, -14.9, -13.7,
+    ];
+    pub const S2: [f32; 41] = [
+        0.0, 0.0, -2.1, -1.9, -1.1, -2.2, -3.5, -3.5, -3.3, -2.0, -1.2, -1.1, -0.5, 0.2, 0.5, 2.1,
+        3.2, 4.1, 4.7, 5.1, 6.7, 7.3, 8.6, 9.8, 10.2, 14.9, 18.1, 15.9, 16.8, 24.2, 31.7, 15.3,
+        18.9, 21.2, 15.6, 8.3, 18.9, 14.6, 15.5, 15.4, 14.6,
+    ];
+
+    /// Generate Planckian radiator SPD (black-body) for a given CCT and wavelengths.
+    pub fn generate_planckian(cct: f32, wavelengths: &[f32]) -> Vec<f32> {
+        let c1 = 3.741771e-16;
+        let c2 = 1.4388e-2;
+        wavelengths
+            .iter()
+            .map(|&wl| {
+                let wl_m = wl * 1e-9;
+                if wl_m == 0.0 {
+                    0.0
+                } else {
+                    c1 * wl_m.powi(-5) / ((c2 / (wl_m * cct)).exp() - 1.0)
+                }
+            })
+            .collect()
+    }
+
+    /// Generate CIE Daylight SPD for a given CCT and wavelengths.
+    pub fn generate_daylight(cct: f32, wavelengths: &[f32]) -> Vec<f32> {
+        let x_d = if cct <= 7000.0 {
+            -4.6070e9 / cct.powi(3) + 2.9678e6 / cct.powi(2) + 0.09911e3 / cct + 0.244063
+        } else {
+            -2.0064e9 / cct.powi(3) + 1.9018e6 / cct.powi(2) + 0.24748e3 / cct + 0.237040
+        };
+
+        let y_d = -3.000 * x_d * x_d + 2.870 * x_d - 0.275;
+
+        let m1 = (-1.3515 - 1.7703 * x_d + 5.9114 * y_d) / (0.0241 + 0.2562 * x_d - 0.7341 * y_d);
+        let m2 = (0.0300 - 31.4424 * x_d + 30.0717 * y_d) / (0.0241 + 0.2562 * x_d - 0.7341 * y_d);
+
+        wavelengths
+            .iter()
+            .map(|&wl| {
+                // Interpolate S0, S1, S2 from 10nm table (380-780, indices 0-40)
+                let t = (wl - 380.0) / 10.0;
+                let idx = t.floor() as i32;
+                let x = t - idx as f32;
+
+                let get_val = |table: &[f32; 41]| {
+                    if idx < 0 {
+                        table[0] // Clamp to 380nm value for < 380
+                    } else if idx >= 40 {
+                        table[40] // Clamp to 780nm value for > 780
+                    } else {
+                        let v0 = table[idx as usize];
+                        let v1 = table[(idx + 1) as usize];
+                        v0 + x * (v1 - v0)
+                    }
+                };
+
+                let s0 = get_val(&S0);
+                let s1 = get_val(&S1);
+                let s2 = get_val(&S2);
+
+                let val = s0 + m1 * s1 + m2 * s2;
+                if val < 0.0 { 0.0 } else { val }
+            })
+            .collect()
     }
 }
 

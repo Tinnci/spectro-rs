@@ -10,7 +10,7 @@ use crossbeam_channel::{Receiver, Sender, unbounded};
 use eframe::egui;
 use egui_plot::{HLine, Legend, Line, Plot, PlotPoints, Points, VLine};
 use spectro_rs::{
-    BoxedSpectrometer, Illuminant, MeasurementMode, Observer, SpectralData,
+    BoxedSpectrometer, Illuminant, MeasurementMode, Observer,
     colorimetry::{Lab, X_BAR_2, XYZ, Y_BAR_2, Z_BAR_2, illuminant},
     discover,
     tm30::calculate_tm30,
@@ -19,6 +19,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::calibration::CalibrationWizard;
+
 use crate::shared::{DeviceCommand, ExtendedDeviceInfo, MeasurementEntry, UIUpdate};
 use crate::t;
 use crate::theme::{
@@ -45,7 +46,7 @@ pub struct SpectroApp {
 
     // Measurement State
     selected_mode: MeasurementMode,
-    last_result: Option<SpectralData>,
+    last_result: Option<spectro_rs::spectrum::MeasurementResult>,
     last_tm30: Option<spectro_rs::tm30::TM30Metrics>,
     measurement_history: Vec<MeasurementEntry>,
 
@@ -191,7 +192,8 @@ impl SpectroApp {
                                     } else {
                                         None
                                     };
-                                    update_tx.send(UIUpdate::Result(data, tm30)).ok();
+                                    let result = data.to_result();
+                                    update_tx.send(UIUpdate::Result(result, tm30)).ok();
                                     update_tx
                                         .send(UIUpdate::Status("✅ Measurement complete".into()))
                                         .ok();
@@ -260,18 +262,7 @@ impl SpectroApp {
     // ========================================================================
 
     fn get_current_lab(&self) -> Option<Lab> {
-        self.last_result.as_ref().map(|data| {
-            let xyz = data.to_xyz_ext(self.selected_illuminant, self.selected_observer);
-            let xyz_normalized = XYZ {
-                x: xyz.x / 100.0,
-                y: xyz.y / 100.0,
-                z: xyz.z / 100.0,
-            };
-            xyz_normalized.to_lab(
-                self.selected_illuminant
-                    .get_white_point(self.selected_observer),
-            )
-        })
+        self.last_result.as_ref().map(|res| res.lab)
     }
 
     fn calculate_delta_e(&self, lab: &Lab) -> Option<f32> {
@@ -294,19 +285,8 @@ impl SpectroApp {
         }
     }
 
-    fn add_to_history(&mut self, data: SpectralData) {
-        let lab = {
-            let xyz = data.to_xyz_ext(self.selected_illuminant, self.selected_observer);
-            let xyz_normalized = XYZ {
-                x: xyz.x / 100.0,
-                y: xyz.y / 100.0,
-                z: xyz.z / 100.0,
-            };
-            xyz_normalized.to_lab(
-                self.selected_illuminant
-                    .get_white_point(self.selected_observer),
-            )
-        };
+    fn add_to_history(&mut self, result: spectro_rs::spectrum::MeasurementResult) {
+        let lab = result.lab;
         let delta_e = self
             .reference_lab
             .as_ref()
@@ -315,8 +295,7 @@ impl SpectroApp {
         let entry = MeasurementEntry {
             timestamp: chrono::Local::now().format("%H:%M:%S").to_string(),
             mode: self.selected_mode,
-            data,
-            lab,
+            result, // Using the new consolidated result
             delta_e,
         };
 
@@ -345,9 +324,9 @@ impl SpectroApp {
                     "{},{:?},{:.4},{:.4},{:.4},{}\n",
                     entry.timestamp,
                     entry.mode,
-                    entry.lab.l,
-                    entry.lab.a,
-                    entry.lab.b,
+                    entry.result.lab.l,
+                    entry.result.lab.a,
+                    entry.result.lab.b,
                     entry.delta_e.map(|e| e.to_string()).unwrap_or_default()
                 ));
             }
@@ -417,20 +396,19 @@ impl SpectroApp {
             cgats.push_str("BEGIN_DATA\n");
 
             for (i, entry) in self.measurement_history.iter().enumerate() {
-                let xyz = entry.data.to_xyz();
                 cgats.push_str(&format!(
                     "{} \"{}\" {:.4} {:.4} {:.4} {:.4} {:.4} {:.4} ",
                     i + 1,
                     entry.timestamp,
-                    entry.lab.l,
-                    entry.lab.a,
-                    entry.lab.b,
-                    xyz.x,
-                    xyz.y,
-                    xyz.z
+                    entry.result.lab.l,
+                    entry.result.lab.a,
+                    entry.result.lab.b,
+                    entry.result.xyz.x,
+                    entry.result.xyz.y,
+                    entry.result.xyz.z
                 ));
 
-                for val in &entry.data.values {
+                for val in &entry.result.spectrum.values {
                     cgats.push_str(&format!("{:.6} ", val));
                 }
                 cgats.push('\n');
@@ -452,16 +430,13 @@ impl SpectroApp {
         ui.vertical_centered(|ui| {
             ui.add_space(20.0);
 
-            if let Some(data) = &self.last_result {
-                let xyz = data.to_xyz();
-                let y_max = xyz.y.max(0.01);
-                let xyz_normalized = XYZ {
-                    x: xyz.x / y_max,
-                    y: xyz.y / y_max,
-                    z: xyz.z / y_max,
-                };
-                let (r, g, b) = xyz_normalized.to_srgb();
-                let lab = self.get_current_lab().unwrap();
+            if let Some(res) = &self.last_result {
+                let (r, g, b) = (
+                    (res.rgb.0 * 255.0) as u8,
+                    (res.rgb.1 * 255.0) as u8,
+                    (res.rgb.2 * 255.0) as u8,
+                );
+                let lab = res.lab;
 
                 // === Giant Color Swatch ===
                 let available_size = ui.available_size();
@@ -636,11 +611,12 @@ impl SpectroApp {
 
         plot.show(ui, |plot_ui| {
             // Draw current measurement
-            if let Some(data) = &self.last_result {
-                let points: PlotPoints = data
+            if let Some(res) = &self.last_result {
+                let points: PlotPoints = res
+                    .spectrum
                     .wavelengths
                     .iter()
-                    .zip(data.values.iter())
+                    .zip(res.spectrum.values.iter())
                     .map(|(w, v)| [*w as f64, *v as f64])
                     .collect();
 
@@ -651,7 +627,8 @@ impl SpectroApp {
                 plot_ui.line(line);
 
                 // Mark peak wavelength
-                let peak_idx = data
+                let peak_idx = res
+                    .spectrum
                     .values
                     .iter()
                     .enumerate()
@@ -704,19 +681,15 @@ impl SpectroApp {
         // === Multi-dimensional Data Dashboard ===
         ui.add_space(10.0);
 
-        if let Some(data) = &self.last_result {
-            let xyz = data.to_xyz();
-            let xyz_for_lab = XYZ {
-                x: xyz.x / 100.0,
-                y: xyz.y / 100.0,
-                z: xyz.z / 100.0,
-            };
-            let lab = xyz_for_lab.to_lab(illuminant::D65_2);
+        if let Some(res) = &self.last_result {
+            let xyz = res.xyz;
+            let lab = res.lab;
             let (chroma, hue) = (lab.chroma(), lab.hue());
-            let cct = xyz.to_cct();
+            let cct = res.cct;
 
             // Peak and centroid
-            let peak_idx = data
+            let peak_idx = res
+                .spectrum
                 .values
                 .iter()
                 .enumerate()
@@ -726,8 +699,9 @@ impl SpectroApp {
                 .unwrap_or(0);
             let peak_wl = 380 + peak_idx * 10;
 
-            let total_power: f32 = data.values.iter().skip(4).sum();
-            let centroid: f32 = data
+            let total_power: f32 = res.spectrum.values.iter().skip(4).sum();
+            let centroid: f32 = res
+                .spectrum
                 .values
                 .iter()
                 .enumerate()
@@ -912,7 +886,7 @@ impl SpectroApp {
                 .measurement_history
                 .iter()
                 .enumerate()
-                .map(|(i, e)| [i as f64, e.lab.l as f64])
+                .map(|(i, e)| [i as f64, e.result.lab.l as f64])
                 .collect();
             plot_ui.line(
                 Line::new(l_points)
@@ -1097,15 +1071,15 @@ impl SpectroApp {
                             ui.end_row();
 
                             // Values in two columns
-                            for i in (0..data.values.len()).step_by(2) {
+                            for i in (0..data.spectrum.values.len()).step_by(2) {
                                 let wl1 = 380 + i * 10;
                                 ui.label(format!("{}", wl1));
-                                ui.label(format!("{:.6}", data.values[i]));
+                                ui.label(format!("{:.6}", data.spectrum.values[i]));
 
-                                if i + 1 < data.values.len() {
+                                if i + 1 < data.spectrum.values.len() {
                                     let wl2 = 380 + (i + 1) * 10;
                                     ui.label(format!("{}", wl2));
-                                    ui.label(format!("{:.6}", data.values[i + 1]));
+                                    ui.label(format!("{:.6}", data.spectrum.values[i + 1]));
                                 }
                                 ui.end_row();
                             }
@@ -1116,7 +1090,7 @@ impl SpectroApp {
 
             // Statistics
             ui.collapsing("📊 Statistics", |ui| {
-                let values = &data.values;
+                let values = &data.spectrum.values;
                 let min = values.iter().cloned().fold(f32::INFINITY, f32::min);
                 let max = values.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
                 let sum: f32 = values.iter().sum();
@@ -1205,7 +1179,7 @@ impl SpectroApp {
 
         if let Some(data) = &self.last_result {
             ui.collapsing("🧪 Current Calculation", |ui| {
-                let xyz = data.to_xyz();
+                let xyz = data.xyz;
                 let xyz_norm = XYZ {
                     x: xyz.x / 100.0,
                     y: xyz.y / 100.0,
@@ -1213,7 +1187,7 @@ impl SpectroApp {
                 };
                 let lab = xyz_norm.to_lab(illuminant::D65_2);
 
-                ui.label(format!("Mode: {:?}", data.mode));
+                ui.label(format!("Mode: {:?}", data.spectrum.mode));
                 ui.add_space(5.0);
 
                 egui::Grid::new("calc_grid")
@@ -1290,7 +1264,7 @@ impl SpectroApp {
                 .iter()
                 .rev() // Draw from oldest to newest
                 .map(|e| {
-                    let xyz = e.data.to_xyz();
+                    let xyz = e.result.xyz;
                     let (x, y) = xyz.to_chromaticity();
                     [x as f64, y as f64]
                 })
@@ -1306,7 +1280,7 @@ impl SpectroApp {
 
             // 4. Draw Current Point
             if let Some(data) = &self.last_result {
-                let xyz = data.to_xyz();
+                let xyz = data.xyz;
                 let (x, y) = xyz.to_chromaticity();
                 plot_ui.points(
                     Points::new(vec![[x as f64, y as f64]])
@@ -1799,8 +1773,8 @@ impl eframe::App for SpectroApp {
 
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         for (idx, entry) in self.measurement_history.iter().enumerate() {
-                            let lab = &entry.lab;
-                            let xyz = entry.data.to_xyz();
+                            let lab = &entry.result.lab;
+                            let xyz = entry.result.xyz;
                             let y_max = xyz.y.max(0.01);
                             let xyz_norm = XYZ {
                                 x: xyz.x / y_max,

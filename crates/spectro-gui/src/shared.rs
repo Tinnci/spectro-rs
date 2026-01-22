@@ -1,6 +1,6 @@
 //! Shared types for communication between UI and device worker threads.
 
-use spectro_rs::{DeviceInfo, MeasurementMode, SpectralData, colorimetry::Lab, tm30::TM30Metrics};
+use spectro_rs::{DeviceInfo, MeasurementMode, tm30::TM30Metrics};
 
 // ============================================================================
 // Device Information Structures
@@ -26,12 +26,11 @@ pub struct ExtendedDeviceInfo {
 }
 
 /// Measurement history entry
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct MeasurementEntry {
     pub timestamp: String,
     pub mode: MeasurementMode,
-    pub data: SpectralData,
-    pub lab: Lab,
+    pub result: spectro_rs::spectrum::MeasurementResult,
     pub delta_e: Option<f32>,
 }
 
@@ -50,7 +49,10 @@ pub enum DeviceCommand {
 pub enum UIUpdate {
     Connected(ExtendedDeviceInfo),
     Status(String),
-    Result(SpectralData, Option<Box<TM30Metrics>>),
+    Result(
+        spectro_rs::spectrum::MeasurementResult,
+        Option<Box<TM30Metrics>>,
+    ),
     Error(String),
     Disconnected,
 }

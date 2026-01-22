@@ -12,6 +12,26 @@ pub enum MeasurementMode {
     /// Emissive measurement (light sources like displays, lamps)
     /// Uses direct CMF integration
     Emissive,
+    /// Ambient light measurement (same as Emissive but typically with cosine corrector)
+    Ambient,
+}
+
+/// A consolidated result object containing all standard colorimetric values.
+/// This enforces Single Source of Truth by ensuring that derived values (XYZ, Lab, RGB)
+/// are always calculated consistently alongside the spectral data.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MeasurementResult {
+    pub spectrum: SpectralData,
+    /// CIE 1931 XYZ (D50 adapted)
+    pub xyz: XYZ,
+    /// CIE L*a*b* (D50 illuminant)
+    pub lab: crate::colorimetry::Lab,
+    /// sRGB (0-1 range, D65)
+    pub rgb: (f32, f32, f32),
+    /// Correlated Color Temperature (K)
+    pub cct: f32,
+    /// Color Rendering Index (Ra) - Placeholder for now
+    pub cri: Option<f32>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -98,7 +118,7 @@ impl SpectralData {
                     }
                 }
             }
-            MeasurementMode::Emissive => self.to_xyz_emissive_ext(obs),
+            MeasurementMode::Emissive | MeasurementMode::Ambient => self.to_xyz_emissive_ext(obs),
         }
     }
 
@@ -375,6 +395,79 @@ impl SpectralData {
             .map(|(s, yb)| s * yb)
             .sum();
         100.0 / (sum_s_y * step)
+    }
+
+    /// Convert the spectral data into a consolidated `MeasurementResult`.
+    /// This performs all standard colorimetric conversions (XYZ, Lab, RGB, CCT)
+    /// using standard settings (D50 for Lab/Print, D65 for Screen/RGB).
+    pub fn to_result(&self) -> MeasurementResult {
+        // Standard Print/Design workflow uses D50
+        let target_illuminant = Illuminant::D50;
+        let observer = Observer::CIE1931_2;
+
+        // 1. Calculate XYZ based on current mode defaults
+        // For reflective, we usually want D50 (ICC standard)
+        // For emissive, we just integrate (native white point)
+        let xyz = if self.mode == MeasurementMode::Reflective {
+            self.to_xyz_ext(target_illuminant, observer)
+        } else {
+            self.to_xyz_ext(Illuminant::D65, observer)
+        };
+
+        // 2. Normalize XYZ (Y=100) -> Y=1.0 for some contexts, but Lab expects Y=100
+        // Our XYZ struct is typically 0..100 range.
+
+        // 3. Calculate Lab (always relative to D50 for ICC compatibility)
+        let wp = target_illuminant.get_white_point(observer);
+
+        // If we measured emissive (e.g. D65 screen), we need to adapt to D50 for Lab
+        // or just use the measured white point as reference.
+        // For SSOT simplicity in this generic result, we use standard D50 Lab.
+        let lab = if self.mode == MeasurementMode::Reflective {
+            xyz.to_lab(wp)
+        } else {
+            // For emissive, Lab is relative to the device's own white point often,
+            // or we adapt to D50. Let's adapt to D50 to be safe for "standard" Lab values.
+            let adapted_xyz = crate::colorimetry::chromatic_adaptation::bradford_adapt(
+                xyz,
+                Illuminant::D65.get_white_point(observer), // Assuming D65 native for now
+                wp,
+            );
+            adapted_xyz.to_lab(wp)
+        };
+
+        // 4. Calculate sRGB (always D65)
+        // We need D65 XYZ for sRGB
+        let srgb_xyz = if self.mode == MeasurementMode::Reflective {
+            // Adapt D50 -> D65
+            crate::colorimetry::chromatic_adaptation::bradford_adapt(
+                xyz,
+                wp,
+                Illuminant::D65.get_white_point(observer),
+            )
+        } else {
+            xyz // Already D65-ish or native
+        };
+        let (r, g, b) = srgb_xyz.to_srgb();
+        let rgb_float = (r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0);
+
+        // 5. CCT
+        let cct = xyz.to_cct();
+
+        // 6. Calculate CRI
+        // Returns (Ra, R9). We store Ra in the cri field.
+        // This requires the spectrum to be aligned to 380-780nm/10nm.
+        // SpectralData guarantees safe padding so this shouldn't panic.
+        let (ra, _) = crate::colorimetry::metrics::calculate_cri(self);
+
+        MeasurementResult {
+            spectrum: self.clone(),
+            xyz,
+            lab,
+            rgb: rgb_float,
+            cct,
+            cri: Some(ra),
+        }
     }
 }
 
