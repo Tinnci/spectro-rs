@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 
 use crate::backend;
 use crate::calibration::CalibrationWizard;
-use crate::components::history::{HistoryAction, HistoryContext, render_history_panel};
+use crate::components::history::{HistoryAction, HistoryContext, render_history};
 use crate::components::reference::{ReferenceContext, render_reference_window};
 use crate::components::settings::{SettingsContext, render_settings_window};
 use crate::inspector::{DeviceInspector, InspectorContext};
@@ -61,6 +61,7 @@ pub struct SpectroApp {
     show_reference_input: bool,
     show_settings: bool,
     show_history_panel: bool,
+    show_history_detached: bool,
     inspector: DeviceInspector,
 
     // Theme and UX
@@ -120,6 +121,7 @@ impl SpectroApp {
             show_reference_input: false,
             show_settings: false,
             show_history_panel: true,
+            show_history_detached: false,
             inspector: DeviceInspector::new(),
             theme_config,
             theme_dirty: false,
@@ -342,10 +344,10 @@ impl eframe::App for SpectroApp {
         let min_height = self.theme_config.layout.window_min_height;
 
         if self.is_expert_mode {
-            if self.show_history_panel {
+            if self.show_history_panel && !self.show_history_detached {
                 min_width += self.theme_config.layout.history_min_width;
             }
-            if self.inspector.visible {
+            if self.inspector.visible && !self.inspector.is_detached {
                 min_width += self.theme_config.layout.inspector_min_width;
             }
         }
@@ -623,45 +625,130 @@ impl eframe::App for SpectroApp {
 
         // === Left Panel: History ===
         if self.is_expert_mode && self.show_history_panel {
-            let action = render_history_panel(
-                ctx,
-                &HistoryContext {
-                    history: &self.measurement_history,
-                    delta_e_tolerance: self.delta_e_tolerance,
-                    layout: &self.theme_config.layout,
-                },
-            );
+            if self.show_history_detached {
+                // Detached Viewport (Native Window)
+                ctx.show_viewport_immediate(
+                    egui::ViewportId::from_hash_of("history_viewport"),
+                    egui::ViewportBuilder::default()
+                        .with_title(t!("gui-history-title"))
+                        .with_inner_size([self.theme_config.layout.history_min_width, 600.0]),
+                    |ctx, class| {
+                        if class == egui::ViewportClass::Root {
+                            return;
+                        }
+                        egui::CentralPanel::default().show(ctx, |ui| {
+                            let action = render_history(
+                                ui,
+                                &HistoryContext {
+                                    history: &self.measurement_history,
+                                    delta_e_tolerance: self.delta_e_tolerance,
+                                    layout: &self.theme_config.layout,
+                                    is_detached: true,
+                                },
+                            );
+                            match action {
+                                HistoryAction::Clear => self.measurement_history.clear(),
+                                HistoryAction::ExportCsv => self.export_history_csv(),
+                                HistoryAction::ExportJson => self.export_history_json(),
+                                HistoryAction::ExportCgats => self.export_history_cgats(),
+                                HistoryAction::Close => self.show_history_panel = false,
+                                HistoryAction::Detach => {} // Already detached
+                                HistoryAction::Attach => self.show_history_detached = false,
+                                HistoryAction::None => {}
+                            }
+                        });
 
-            match action {
-                HistoryAction::Clear => self.measurement_history.clear(),
-                HistoryAction::ExportCsv => self.export_history_csv(),
-                HistoryAction::ExportJson => self.export_history_json(),
-                HistoryAction::ExportCgats => self.export_history_cgats(),
-                HistoryAction::Close => self.show_history_panel = false,
-                HistoryAction::None => {}
+                        if ctx.input(|i| i.viewport().close_requested()) {
+                            self.show_history_detached = false;
+                        }
+                    },
+                );
+            } else {
+                // Embedded SidePanel
+                egui::SidePanel::left("history_panel")
+                    .resizable(true)
+                    .default_width(self.theme_config.layout.history_default_width)
+                    .min_width(self.theme_config.layout.history_min_width)
+                    .max_width(250.0)
+                    .show(ctx, |ui| {
+                        let action = render_history(
+                            ui,
+                            &HistoryContext {
+                                history: &self.measurement_history,
+                                delta_e_tolerance: self.delta_e_tolerance,
+                                layout: &self.theme_config.layout,
+                                is_detached: false,
+                            },
+                        );
+                        match action {
+                            HistoryAction::Clear => self.measurement_history.clear(),
+                            HistoryAction::ExportCsv => self.export_history_csv(),
+                            HistoryAction::ExportJson => self.export_history_json(),
+                            HistoryAction::ExportCgats => self.export_history_cgats(),
+                            HistoryAction::Close => self.show_history_panel = false,
+                            HistoryAction::Detach => self.show_history_detached = true,
+                            HistoryAction::Attach => {} // Already attached
+                            HistoryAction::None => {}
+                        }
+                    });
             }
         }
 
         // === Right Panel: Expert Inspector ===
         if self.is_expert_mode && self.inspector.visible {
-            egui::SidePanel::right("expert_panel")
-                .resizable(true)
-                .default_width(self.theme_config.layout.inspector_default_width)
-                .min_width(self.theme_config.layout.inspector_min_width)
-                .max_width(self.theme_config.layout.inspector_max_width)
-                .show(ctx, |ui| {
-                    let ctx = InspectorContext {
-                        device_info: &self.device_info,
-                        is_connected: self.is_connected,
-                        is_calibrated: self.is_calibrated,
-                        selected_mode: self.selected_mode,
-                        last_result: self.last_result.as_ref(),
-                        last_tm30: self.last_tm30.as_ref(),
-                        history: &self.measurement_history,
-                        layout: &self.theme_config.layout,
-                    };
-                    self.inspector.render(ui, &ctx);
-                });
+            if self.inspector.is_detached {
+                // Detached Viewport (Native Window)
+                let mut is_detached = self.inspector.is_detached;
+                ctx.show_viewport_immediate(
+                    egui::ViewportId::from_hash_of("inspector_viewport"),
+                    egui::ViewportBuilder::default()
+                        .with_title(t!("gui-device-inspector"))
+                        .with_inner_size([self.theme_config.layout.inspector_min_width, 600.0]),
+                    |ctx, class| {
+                        if class == egui::ViewportClass::Root {
+                            return;
+                        }
+                        egui::CentralPanel::default().show(ctx, |ui| {
+                            let insp_ctx = InspectorContext {
+                                device_info: &self.device_info,
+                                is_connected: self.is_connected,
+                                is_calibrated: self.is_calibrated,
+                                selected_mode: self.selected_mode,
+                                last_result: self.last_result.as_ref(),
+                                last_tm30: self.last_tm30.as_ref(),
+                                history: &self.measurement_history,
+                                layout: &self.theme_config.layout,
+                            };
+                            self.inspector.render(ui, &insp_ctx);
+                        });
+
+                        if ctx.input(|i| i.viewport().close_requested()) {
+                            is_detached = false;
+                        }
+                    },
+                );
+                self.inspector.is_detached = is_detached;
+            } else {
+                // Embedded SidePanel
+                egui::SidePanel::right("expert_panel")
+                    .resizable(true)
+                    .default_width(self.theme_config.layout.inspector_default_width)
+                    .min_width(self.theme_config.layout.inspector_min_width)
+                    .max_width(self.theme_config.layout.inspector_max_width)
+                    .show(ctx, |ui| {
+                        let ctx = InspectorContext {
+                            device_info: &self.device_info,
+                            is_connected: self.is_connected,
+                            is_calibrated: self.is_calibrated,
+                            selected_mode: self.selected_mode,
+                            last_result: self.last_result.as_ref(),
+                            last_tm30: self.last_tm30.as_ref(),
+                            history: &self.measurement_history,
+                            layout: &self.theme_config.layout,
+                        };
+                        self.inspector.render(ui, &ctx);
+                    });
+            }
         }
 
         // === Central Panel: Main Workspace ===

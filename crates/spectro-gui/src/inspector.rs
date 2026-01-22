@@ -51,6 +51,8 @@ pub struct DeviceInspector {
     pub tab: InspectorTab,
     /// Whether the panel is visible
     pub visible: bool,
+    /// Whether the inspector is detached in its own window
+    pub is_detached: bool,
 }
 
 impl Default for DeviceInspector {
@@ -65,6 +67,7 @@ impl DeviceInspector {
         Self {
             tab: InspectorTab::default(),
             visible: true,
+            is_detached: false,
         }
     }
 
@@ -85,6 +88,16 @@ impl DeviceInspector {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button("⏵").on_hover_text(t!("gui-hide")).clicked() {
                     self.visible = false;
+                }
+
+                let detach_icon = if self.is_detached { "📥" } else { "⇗" };
+                let detach_text = if self.is_detached {
+                    t!("gui-attach")
+                } else {
+                    t!("gui-detach")
+                };
+                if ui.button(detach_icon).on_hover_text(detach_text).clicked() {
+                    self.is_detached = !self.is_detached;
                 }
             });
         });

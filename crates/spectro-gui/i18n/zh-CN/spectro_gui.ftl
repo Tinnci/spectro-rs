@@ -21,6 +21,8 @@ gui-close = 关闭
 gui-hide = 收起
 gui-cancel = 取消
 gui-clear = 清除
+gui-attach = 嵌入主界面
+gui-detach = 弹窗显示
 
 # 测量模式
 gui-reflective = 反射

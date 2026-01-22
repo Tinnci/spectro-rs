@@ -21,6 +21,8 @@ gui-close = Close
 gui-hide = Hide
 gui-cancel = Cancel
 gui-clear = Clear
+gui-attach = Attach to Main Window
+gui-detach = Pop out into Window
 
 # Measurement modes
 gui-reflective = Reflective
