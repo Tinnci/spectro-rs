@@ -141,6 +141,57 @@ pub fn render_simple_workspace(ui: &mut egui::Ui, ui_ctx: &SimpleViewContext) {
                     });
             });
 
+            if res.spectrum.mode == spectro_rs::spectrum::MeasurementMode::Emissive
+                || res.spectrum.mode == spectro_rs::spectrum::MeasurementMode::Ambient
+            {
+                ui.add_space(ui_ctx.layout.spacing * 2.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(ui.available_width() / 2.0 - ui_ctx.layout.bento_min_width);
+                    egui::Frame::none()
+                        .fill(egui::Color32::from_gray(30))
+                        .rounding(8.0)
+                        .inner_margin(egui::Margin::same(12.0))
+                        .show(ui, |ui| {
+                            ui.vertical(|ui| {
+                                let (label, unit) = if res.spectrum.mode
+                                    == spectro_rs::spectrum::MeasurementMode::Emissive
+                                {
+                                    ("Luminance", "cd/m²")
+                                } else {
+                                    ("Illuminance", "Lux")
+                                };
+                                ui.label(
+                                    egui::RichText::new(label)
+                                        .size(12.0)
+                                        .color(egui::Color32::GRAY),
+                                );
+                                ui.heading(
+                                    egui::RichText::new(format!("{:.2} {}", res.xyz.y, unit))
+                                        .size(32.0)
+                                        .color(egui::Color32::WHITE),
+                                );
+
+                                ui.add_space(4.0);
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        egui::RichText::new(format!("CCT: {:.0}K", res.cct))
+                                            .size(14.0),
+                                    );
+                                    ui.add_space(10.0);
+                                    ui.label(
+                                        egui::RichText::new(format!(
+                                            "XYZ: {:.1}, {:.1}, {:.1}",
+                                            res.xyz.x, res.xyz.y, res.xyz.z
+                                        ))
+                                        .size(12.0)
+                                        .color(egui::Color32::DARK_GRAY),
+                                    );
+                                });
+                            });
+                        });
+                });
+            }
+
             ui.add_space(ui_ctx.layout.spacing * 2.0);
 
             // === sRGB Value ===

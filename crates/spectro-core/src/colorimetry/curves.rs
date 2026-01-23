@@ -194,3 +194,55 @@ impl DisplayCalibrator {
         i0 + t * (i1 - i0)
     }
 }
+
+/// Manages a stateful display calibration session.
+/// This acts as the SSOT for the measurement sequence and progress.
+pub struct CalibrationSession {
+    pub calibrator: DisplayCalibrator,
+    pub steps: Vec<f32>,
+    pub current_idx: usize,
+}
+
+impl CalibrationSession {
+    pub fn new(target_gamma: f32, target_white_point: XYZ, num_steps: usize) -> Self {
+        let mut steps = Vec::with_capacity(num_steps);
+        for i in 0..num_steps {
+            steps.push(i as f32 / (num_steps - 1) as f32);
+        }
+
+        Self {
+            calibrator: DisplayCalibrator::new(target_gamma, target_white_point),
+            steps,
+            current_idx: 0,
+        }
+    }
+
+    /// Returns the input drive level for the current step.
+    pub fn current_level(&self) -> Option<f32> {
+        self.steps.get(self.current_idx).copied()
+    }
+
+    /// Records a measurement for the current step and advances.
+    pub fn add_measurement(&mut self, xyz: XYZ) -> bool {
+        if let Some(level) = self.current_level() {
+            self.calibrator.add_measurement(level, xyz);
+            self.current_idx += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Returns progress as (current, total).
+    pub fn progress(&self) -> (usize, usize) {
+        (self.current_idx, self.steps.len())
+    }
+
+    pub fn is_complete(&self) -> bool {
+        self.current_idx >= self.steps.len()
+    }
+
+    pub fn generate_cal(&self) -> VideoCal {
+        self.calibrator.generate_cal(256)
+    }
+}

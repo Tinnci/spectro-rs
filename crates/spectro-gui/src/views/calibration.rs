@@ -1,6 +1,6 @@
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
-use spectro_rs::colorimetry::curves::{DisplayCalibrator, VideoCal};
+use spectro_rs::colorimetry::curves::{CalibrationSession, VideoCal};
 use spectro_rs::colorimetry::{XYZ, illuminant};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -18,13 +18,25 @@ pub enum CalibrationAction {
     None,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum CalibrationTarget {
+    #[default]
+    None,
+    White,
+    Black,
+    Ramp,
+}
+
 pub struct DisplayCalibrationState {
     pub step: CalStep,
-    pub current_patch_index: usize,
-    pub total_patches: usize,
     pub target_gamma: f32,
-    pub measurements: Vec<(f32, XYZ)>,
+    pub total_patches: usize,
+    pub session: Option<CalibrationSession>,
     pub generated_cal: Option<VideoCal>,
+    pub white_luminance: Option<f32>,
+    pub black_luminance: Option<f32>,
+    pub last_measured_y: Option<f32>,
+    pub current_target: CalibrationTarget,
     pub is_measuring: bool,
     pub auto_advance: bool,
 }
@@ -33,11 +45,14 @@ impl Default for DisplayCalibrationState {
     fn default() -> Self {
         Self {
             step: CalStep::Intro,
-            current_patch_index: 0,
-            total_patches: 17, // 0, 16, 32... 255
             target_gamma: 2.2,
-            measurements: Vec::new(),
+            total_patches: 17,
+            session: None,
             generated_cal: None,
+            white_luminance: None,
+            black_luminance: None,
+            last_measured_y: None,
+            current_target: CalibrationTarget::None,
             is_measuring: false,
             auto_advance: false,
         }
@@ -46,16 +61,35 @@ impl Default for DisplayCalibrationState {
 
 impl DisplayCalibrationState {
     pub fn handle_result(&mut self, xyz: XYZ) {
-        if self.step == CalStep::Measure && self.is_measuring {
-            let current_level = self.current_patch_index as f32 / (self.total_patches - 1) as f32;
-            self.measurements.push((current_level, xyz));
-            self.current_patch_index += 1;
-            self.is_measuring = false;
+        match self.current_target {
+            CalibrationTarget::White => {
+                self.white_luminance = Some(xyz.y);
+                self.is_measuring = false;
+                self.current_target = CalibrationTarget::None;
+            }
+            CalibrationTarget::Black => {
+                self.black_luminance = Some(xyz.y);
+                self.is_measuring = false;
+                self.current_target = CalibrationTarget::None;
+            }
+            CalibrationTarget::Ramp => {
+                if let (Some(session), true) = (
+                    &mut self.session,
+                    self.step == CalStep::Measure && self.is_measuring,
+                ) {
+                    self.last_measured_y = Some(xyz.y);
+                    session.add_measurement(xyz);
+                    self.is_measuring = false;
 
-            if self.current_patch_index >= self.total_patches {
-                generate_calibration(self);
-                self.step = CalStep::Result;
-                self.auto_advance = false;
+                    if session.is_complete() {
+                        self.generated_cal = Some(session.generate_cal());
+                        self.step = CalStep::Result;
+                        self.auto_advance = false;
+                    }
+                }
+            }
+            CalibrationTarget::None => {
+                self.is_measuring = false;
             }
         }
     }
@@ -110,6 +144,7 @@ fn render_intro(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> Calibrat
 }
 
 fn render_setup(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> CalibrationAction {
+    let mut action = CalibrationAction::None;
     ui.vertical_centered(|ui| {
         ui.heading("Calibration Settings");
         ui.add_space(20.0);
@@ -130,6 +165,34 @@ fn render_setup(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> Calibrat
                 ui.end_row();
             });
 
+        ui.add_space(20.0);
+        ui.label("Reference Luminance:");
+        ui.horizontal(|ui| {
+            if ui.button("📸 Measure White").clicked() {
+                ctx.state.is_measuring = true;
+                ctx.state.current_target = CalibrationTarget::White;
+                action = CalibrationAction::RequestMeasurement;
+            }
+            if let Some(w) = ctx.state.white_luminance {
+                ui.label(format!("White: {:.2} cd/m²", w));
+            } else {
+                ui.label("White: Not measured");
+            }
+
+            ui.add_space(20.0);
+
+            if ui.button("📸 Measure Black").clicked() {
+                ctx.state.is_measuring = true;
+                ctx.state.current_target = CalibrationTarget::Black;
+                action = CalibrationAction::RequestMeasurement;
+            }
+            if let Some(b) = ctx.state.black_luminance {
+                ui.label(format!("Black: {:.3} cd/m²", b));
+            } else {
+                ui.label("Black: Not measured");
+            }
+        });
+
         ui.add_space(40.0);
 
         ui.horizontal(|ui| {
@@ -140,31 +203,44 @@ fn render_setup(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> Calibrat
                 .add_enabled(ctx.is_connected, egui::Button::new("Start Measuring >>"))
                 .clicked()
             {
-                ctx.state.measurements.clear();
-                ctx.state.current_patch_index = 0;
+                ctx.state.session = Some(CalibrationSession::new(
+                    ctx.state.target_gamma,
+                    illuminant::D65,
+                    ctx.state.total_patches,
+                ));
+                ctx.state.current_target = CalibrationTarget::Ramp;
                 ctx.state.step = CalStep::Measure;
             }
         });
     });
-    CalibrationAction::None
+    action
 }
 
 fn render_measure(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> CalibrationAction {
-    let current_level = ctx.state.current_patch_index as f32 / (ctx.state.total_patches - 1) as f32;
+    let session = match &ctx.state.session {
+        Some(s) => s,
+        None => return CalibrationAction::None,
+    };
+
+    let current_level = session.current_level().unwrap_or(0.0);
+    let (current_idx, total) = session.progress();
     let gray_val = (current_level * 255.0) as u8;
     let mut action = CalibrationAction::None;
 
     ui.vertical_centered(|ui| {
-        ui.heading(format!(
-            "Step {} of {}",
-            ctx.state.current_patch_index + 1,
-            ctx.state.total_patches
-        ));
+        ui.heading(format!("Step {} of {}", current_idx + 1, total));
 
         ui.label(format!(
             "Drive Level: RGB({}, {}, {})",
             gray_val, gray_val, gray_val
         ));
+
+        if let Some(y) = ctx.state.last_measured_y {
+            ui.label(
+                egui::RichText::new(format!("Current: {:.2} cd/m²", y))
+                    .color(egui::Color32::LIGHT_BLUE),
+            );
+        }
 
         // Draw the color patch - Fullscreen-ish or at least large
         let size = egui::vec2(300.0, 300.0);
@@ -181,6 +257,7 @@ fn render_measure(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> Calibr
             // If we're in auto mode and not finished, trigger next measurement
             if ctx.state.auto_advance && ctx.state.step == CalStep::Measure {
                 ctx.state.is_measuring = true;
+                ctx.state.current_target = CalibrationTarget::Ramp;
                 action = CalibrationAction::RequestMeasurement;
             }
 
@@ -188,12 +265,14 @@ fn render_measure(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> Calibr
                 if ui.button("📸 Measure Single").clicked() {
                     ctx.state.is_measuring = true;
                     ctx.state.auto_advance = false;
+                    ctx.state.current_target = CalibrationTarget::Ramp;
                     action = CalibrationAction::RequestMeasurement;
                 }
 
                 if ui.button("🚀 Auto Measure").clicked() {
                     ctx.state.is_measuring = true;
                     ctx.state.auto_advance = true;
+                    ctx.state.current_target = CalibrationTarget::Ramp;
                     action = CalibrationAction::RequestMeasurement;
                 }
 
@@ -207,12 +286,13 @@ fn render_measure(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> Calibr
                         z: simulated_y * 1.08,
                     };
 
-                    ctx.state.measurements.push((current_level, simulated_xyz));
-                    ctx.state.current_patch_index += 1;
-
-                    if ctx.state.current_patch_index >= ctx.state.total_patches {
-                        generate_calibration(ctx.state);
-                        ctx.state.step = CalStep::Result;
+                    if let Some(s) = &mut ctx.state.session {
+                        ctx.state.last_measured_y = Some(simulated_xyz.y);
+                        s.add_measurement(simulated_xyz);
+                        if s.is_complete() {
+                            ctx.state.generated_cal = Some(s.generate_cal());
+                            ctx.state.step = CalStep::Result;
+                        }
                     }
                 }
             });
@@ -226,14 +306,6 @@ fn render_measure(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> Calibr
     });
 
     action
-}
-
-fn generate_calibration(state: &mut DisplayCalibrationState) {
-    let mut calibrator = DisplayCalibrator::new(state.target_gamma, illuminant::D65);
-    for (input, xyz) in &state.measurements {
-        calibrator.add_measurement(*input, *xyz);
-    }
-    state.generated_cal = Some(calibrator.generate_cal(256));
 }
 
 fn render_result(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> CalibrationAction {
@@ -278,8 +350,7 @@ fn render_result(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> Calibra
 
         if ui.button("Restart").clicked() {
             ctx.state.step = CalStep::Intro;
-            ctx.state.measurements.clear();
-            ctx.state.current_patch_index = 0;
+            ctx.state.session = None;
             ctx.state.is_measuring = false;
         }
     });
