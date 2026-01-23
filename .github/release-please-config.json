@@ -1,0 +1,25 @@
+{
+  "packages": {
+    "crates/spectro-core": {
+      "package-name": "spectro-rs",
+      "release-type": "rust",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": true
+    },
+    "crates/spectro-gui": {
+      "package-name": "spectro-gui",
+      "release-type": "rust",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": true
+    }
+  },
+  "plugins": [
+    {
+      "type": "linked-versions",
+      "groupName": "spectro-suite",
+      "packages": ["spectro-rs", "spectro-gui"]
+    }
+  ],
+  "tag-separator": "-",
+  "include-component-in-tag": true
+}
