@@ -116,6 +116,14 @@ pub trait Spectrometer {
 
     /// Returns whether the device is currently calibrated for the given mode.
     fn is_calibrated(&self, mode: MeasurementMode) -> bool;
+
+    /// Runs a sensor diagnostic test (linearity, noise, etc.).
+    /// Returns a human-readable report.
+    fn test_sensor(&mut self) -> Result<String> {
+        Err(crate::SpectroError::Device(
+            "Not supported by this device".into(),
+        ))
+    }
 }
 
 /// A boxed spectrometer for dynamic dispatch.

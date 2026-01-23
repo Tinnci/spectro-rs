@@ -539,4 +539,108 @@ impl<T: Transport> Spectrometer for Munki<T> {
             MeasurementMode::Emissive | MeasurementMode::Ambient => true,
         }
     }
+
+    fn test_sensor(&mut self) -> Result<String> {
+        self.flush_input()?;
+        let (pos, _) = self.get_raw_status()?;
+        if pos != 2 {
+            return Err(crate::SpectroError::Device(
+                "Diagnostic requires device to be in Calibration (White Tile) position.".into(),
+            ));
+        }
+
+        let mut report = String::from("=== ColorMunki Sensor Linearity Test ===\n");
+        use std::fmt::Write;
+
+        let times = [
+            0.010, 0.020, 0.040, 0.080, 0.160, 0.320, 0.640, 1.28, 2.0, 4.0,
+        ];
+        let mut baseline_rate = 0.0;
+
+        writeln!(
+            report,
+            "{:<10} | {:<10} | {:<10} | {:<10} | Status",
+            "Time(s)", "Peak", "Rate(cnt/s)", "Linearity"
+        )
+        .unwrap();
+        writeln!(
+            report,
+            "---------------------------------------------------------------------"
+        )
+        .unwrap();
+
+        for (i, &t) in times.iter().enumerate() {
+            // Measure with LAMP ON, Norm Gain
+            match self.measure_integration(t, true, false) {
+                Ok(raw) => {
+                    let peak = raw.iter().max().copied().unwrap_or(0) as f64;
+                    let rate = peak / t;
+
+                    if i == 0 {
+                        baseline_rate = rate; // Set baseline from fastest measurement (usually linear)
+                    }
+
+                    let linearity = rate / baseline_rate;
+                    let linearity_pct = linearity * 100.0;
+
+                    let status = if peak > 65000.0 {
+                        "SATURATED"
+                    } else if linearity < 0.90 {
+                        "NON-LINEAR"
+                    } else {
+                        "OK"
+                    };
+
+                    writeln!(
+                        report,
+                        "{:<10.3} | {:<10.0} | {:<10.0} | {:<9.1}% | {}",
+                        t, peak, rate, linearity_pct, status
+                    )
+                    .unwrap();
+
+                    // If saturated, no need to go much further, maybe one more to show it's stuck
+                    if peak > 65400.0 {
+                        writeln!(report, "Saturation limit reached. Stopping sweep.").unwrap();
+                        break;
+                    }
+                }
+                Err(e) => {
+                    writeln!(report, "Error at {}s: {}", t, e).unwrap();
+                }
+            }
+        }
+
+        // Dark Current Test
+        writeln!(report, "\n=== Dark Current Test (Lamp OFF) ===").unwrap();
+        // Use 1.0s integration for a good noise floor check
+        let dark_time = 0.5;
+        match self.measure_integration(dark_time, false, false) {
+            Ok(raw) => {
+                let avg = raw.iter().map(|&x| x as f64).sum::<f64>() / raw.len() as f64;
+                let max = raw.iter().max().copied().unwrap_or(0);
+                let std_dev = (raw.iter().map(|&x| (x as f64 - avg).powi(2)).sum::<f64>()
+                    / raw.len() as f64)
+                    .sqrt();
+
+                writeln!(report, "Integration Time: {:.1}s", dark_time).unwrap();
+                writeln!(
+                    report,
+                    "Average Level:    {:.1} (Typical < 1000 at Min Time)",
+                    avg
+                )
+                .unwrap();
+                writeln!(report, "Max Level:        {}", max).unwrap();
+                writeln!(report, "Std Deviation:    {:.2}", std_dev).unwrap();
+
+                // Normalized noise
+                let norm_noise = std_dev / dark_time;
+                writeln!(report, "Noise Rate:       {:.1} cnt/s", norm_noise).unwrap();
+            }
+            Err(e) => writeln!(report, "Dark measurement failed: {}", e).unwrap(),
+        }
+
+        writeln!(report, "=== End of Report ===").unwrap();
+
+        Ok(report)
+    }
 }

@@ -44,6 +44,7 @@ pub enum DeviceCommand {
     Connect,
     Calibrate,
     Measure(MeasurementMode),
+    TestSensor,
 }
 
 /// Messages sent from the Device worker thread to the UI thread.
@@ -54,6 +55,7 @@ pub enum UIUpdate {
         spectro_rs::spectrum::MeasurementResult,
         Option<Box<TM30Metrics>>,
     ),
+    TestResult(String),
     Error(String),
     Disconnected,
 }

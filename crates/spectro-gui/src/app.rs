@@ -28,6 +28,7 @@ pub enum AppView {
     #[default]
     Measurement,
     DisplayCalibration,
+    Diagnostics,
 }
 
 // ============================================================================
@@ -61,6 +62,7 @@ pub struct SpectroApp {
     pub(crate) show_history_panel: bool,
     pub(crate) show_history_detached: bool,
     pub(crate) inspector: DeviceInspector,
+    pub(crate) diagnostics_report: Option<String>,
 
     // Theme and UX
     pub(crate) theme_config: ThemeConfig,
@@ -133,6 +135,7 @@ impl SpectroApp {
             selected_observer: Observer::CIE1931_2,
             calibration_wizard: CalibrationWizard::new(),
             display_calibration: DisplayCalibrationState::default(),
+            diagnostics_report: None,
         }
     }
 
@@ -231,6 +234,10 @@ impl eframe::App for SpectroApp {
                     self.is_connected = false;
                     self.status_msg = "⚠️ Device disconnected".into();
                 }
+                UIUpdate::TestResult(report) => {
+                    self.diagnostics_report = Some(report);
+                    self.is_busy = false;
+                }
             }
         }
 
@@ -273,6 +280,22 @@ impl eframe::App for SpectroApp {
                     if cal_btn.clicked() {
                         self.current_view = AppView::DisplayCalibration;
                     }
+
+                    ui.add_space(12.0);
+
+                    // Diagnostics View
+                    let is_diag = self.current_view == AppView::Diagnostics;
+                    let diag_btn = ui
+                        .add(
+                            egui::Button::new(egui::RichText::new("🩺").size(24.0))
+                                .min_size(btn_size)
+                                .selected(is_diag),
+                        )
+                        .on_hover_text("Sensor Diagnostics");
+
+                    if diag_btn.clicked() {
+                        self.current_view = AppView::Diagnostics;
+                    }
                 });
             });
 
@@ -302,6 +325,9 @@ impl eframe::App for SpectroApp {
                         CalibrationAction::None => {}
                     }
                 });
+            }
+            AppView::Diagnostics => {
+                crate::views::diagnostics::render_diagnostics_view(self, ctx);
             }
         }
 

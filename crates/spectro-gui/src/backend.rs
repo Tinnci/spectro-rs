@@ -99,6 +99,30 @@ pub fn spawn_backend_thread(cmd_rx: Receiver<DeviceCommand>, update_tx: Sender<U
                             .ok();
                     }
                 }
+
+                DeviceCommand::TestSensor => {
+                    if let Some(ref mut d) = device {
+                        update_tx
+                            .send(UIUpdate::Status("Diagnostic Running...".into()))
+                            .ok();
+
+                        match d.test_sensor() {
+                            Ok(report) => {
+                                update_tx.send(UIUpdate::TestResult(report)).ok();
+                                update_tx
+                                    .send(UIUpdate::Status("✅ Diagnostic Complete".into()))
+                                    .ok();
+                            }
+                            Err(e) => {
+                                update_tx.send(UIUpdate::Error(e.to_string())).ok();
+                            }
+                        }
+                    } else {
+                        update_tx
+                            .send(UIUpdate::Error(t!("gui-error-no-device-short")))
+                            .ok();
+                    }
+                }
             }
         }
     });
