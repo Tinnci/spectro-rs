@@ -31,6 +31,7 @@ pub struct MeasurementEntry {
     pub timestamp: String,
     pub mode: MeasurementMode,
     pub result: spectro_rs::spectrum::MeasurementResult,
+    pub tm30: Option<TM30Metrics>,
     pub delta_e: Option<f32>,
 }
 

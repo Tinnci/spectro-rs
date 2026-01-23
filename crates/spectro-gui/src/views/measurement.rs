@@ -314,6 +314,7 @@ pub fn render_measurement_view(app: &mut SpectroApp, ctx: &egui::Context) {
                         delta_e_tolerance: app.delta_e_tolerance,
                         layout: &app.theme_config.layout,
                         is_detached: app.show_history_detached,
+                        selected_index: app.selected_history_index,
                     },
                 );
             });
@@ -336,12 +337,71 @@ pub fn render_measurement_view(app: &mut SpectroApp, ctx: &egui::Context) {
         crate::components::history::HistoryAction::Attach => {
             app.show_history_detached = false;
         }
+        crate::components::history::HistoryAction::Select(idx) => {
+            if let Some(entry) = app.measurement_history.get(idx) {
+                app.last_result = Some(entry.result.clone());
+                app.last_tm30 = entry.tm30.clone();
+                app.selected_history_index = Some(idx);
+            }
+        }
+        crate::components::history::HistoryAction::Delete(idx) => {
+            if app.selected_history_index == Some(idx) {
+                app.selected_history_index = None;
+                app.last_result = app.live_result.clone();
+                app.last_tm30 = app.live_tm30.clone();
+            } else if let Some(ref mut selected) = app.selected_history_index
+                && *selected > idx
+            {
+                *selected -= 1;
+            }
+            if idx < app.measurement_history.len() {
+                app.measurement_history.remove(idx);
+            }
+        }
     }
 
     // === Central Workspace ===
     egui::CentralPanel::default()
         .frame(egui::Frame::none().fill(app.theme_config.adjusted_bg_color(ctx)))
         .show(ctx, |ui| {
+            // --- History Warning Banner ---
+            if let Some(idx) = app.selected_history_index {
+                let entry_time = app
+                    .measurement_history
+                    .get(idx)
+                    .map(|e| e.timestamp.as_str())
+                    .unwrap_or("Unknown");
+
+                egui::Frame::none()
+                    .fill(egui::Color32::from_rgb(255, 193, 7).gamma_multiply(0.2))
+                    .inner_margin(egui::Margin::symmetric(12.0, 4.0))
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new(format!("📜 Viewing History: {}", entry_time))
+                                    .color(egui::Color32::from_rgb(255, 193, 7))
+                                    .strong(),
+                            );
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    if ui
+                                        .button(
+                                            egui::RichText::new("Reset to Live")
+                                                .color(egui::Color32::WHITE),
+                                        )
+                                        .clicked()
+                                    {
+                                        app.selected_history_index = None;
+                                        app.last_result = app.live_result.clone();
+                                        app.last_tm30 = app.live_tm30.clone();
+                                    }
+                                },
+                            );
+                        });
+                    });
+            }
+
             if app.is_expert_mode {
                 render_expert_workspace(
                     ui,

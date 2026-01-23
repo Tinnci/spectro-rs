@@ -110,6 +110,8 @@ gui-bento-history = HISTORY
 gui-bento-indices = INDICES
 gui-bento-sensor = SENSOR
 gui-bento-info = DEVICE INFO
+gui-bento-luminance = LUMINANCE
+gui-bento-illuminance = ILLUMINANCE
 
 # Error messages
 gui-error-no-device = ❌ No device found

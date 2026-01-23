@@ -9,7 +9,7 @@ use crate::spectrum::SpectralData;
 use crate::tm30_data::CES99_SPDS;
 use crate::tm30_data_cmf::{X_BAR_10_5NM, Y_BAR_10_5NM, Z_BAR_10_5NM};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TM30Metrics {
     pub rf: f32,
     pub rg: f32,

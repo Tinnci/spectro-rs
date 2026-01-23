@@ -116,7 +116,16 @@ pub fn render_expert_workspace(ui: &mut egui::Ui, ui_ctx: &ExpertViewContext) {
             (available_width - (cards_per_row as f32 - 1.0) * spacing) / cards_per_row as f32;
 
         // Pre-calculate total card count
-        let total_cards: usize = if res.cri.is_some() { 6 } else { 5 };
+        let mut total_cards: usize = 5; // Base cards: Lab, XYZ, Indices, Peak, RGB
+        if res.cri.is_some() {
+            total_cards += 1;
+        }
+        if res.spectrum.mode == spectro_rs::spectrum::MeasurementMode::Emissive
+            || res.spectrum.mode == spectro_rs::spectrum::MeasurementMode::Ambient
+        {
+            total_cards += 1;
+        }
+
         let rows = total_cards.div_ceil(cards_per_row);
 
         let mut card_index = 0;
@@ -136,11 +145,19 @@ pub fn render_expert_workspace(ui: &mut egui::Ui, ui_ctx: &ExpertViewContext) {
                                 fluid_card_width,
                                 fluid_card_width,
                                 |ui| {
-                                    let rows = [
+                                    let mut rows = vec![
                                         ("L*", format!("{:.2}", lab.l)),
                                         ("a*", format!("{:.2}", lab.a)),
                                         ("b*", format!("{:.2}", lab.b)),
                                     ];
+
+                                    // For emissive, Lab isn't the primary reference, so we can add more context if needed
+                                    if res.spectrum.mode
+                                        == spectro_rs::spectrum::MeasurementMode::Emissive
+                                    {
+                                        rows.push(("Chroma", format!("{:.1}", chroma)));
+                                    }
+
                                     for (label, value) in rows {
                                         ui.horizontal(|ui| {
                                             ui.label(label);
@@ -156,43 +173,88 @@ pub fn render_expert_workspace(ui: &mut egui::Ui, ui_ctx: &ExpertViewContext) {
                             );
                         }
                         1 => {
-                            render_bento_item(
-                                ui,
-                                t!("gui-bento-xyz"),
-                                fluid_card_width,
-                                fluid_card_width,
-                                |ui| {
-                                    let rows = [
-                                        ("X", format!("{:.3}", xyz.x)),
-                                        ("Y", format!("{:.3}", xyz.y)),
-                                        ("Z", format!("{:.3}", xyz.z)),
-                                    ];
-                                    for (label, value) in rows {
-                                        ui.horizontal(|ui| {
-                                            ui.label(label);
-                                            ui.with_layout(
-                                                egui::Layout::right_to_left(egui::Align::Center),
-                                                |ui| {
-                                                    ui.label(egui::RichText::new(value).strong());
-                                                },
+                            if res.spectrum.mode == spectro_rs::spectrum::MeasurementMode::Emissive
+                                || res.spectrum.mode
+                                    == spectro_rs::spectrum::MeasurementMode::Ambient
+                            {
+                                let (title, unit) = if res.spectrum.mode
+                                    == spectro_rs::spectrum::MeasurementMode::Emissive
+                                {
+                                    (t!("gui-bento-luminance"), "cd/m²")
+                                } else {
+                                    (t!("gui-bento-illuminance"), "Lux")
+                                };
+
+                                render_bento_item(
+                                    ui,
+                                    title,
+                                    fluid_card_width,
+                                    fluid_card_width,
+                                    |ui| {
+                                        ui.vertical_centered(|ui| {
+                                            ui.add_space(8.0);
+                                            ui.label(
+                                                egui::RichText::new(format!("{:.2}", xyz.y))
+                                                    .size(28.0)
+                                                    .strong(),
                                             );
+                                            ui.label(egui::RichText::new(unit).weak());
                                         });
-                                    }
-                                },
-                            );
+                                    },
+                                );
+                            } else {
+                                // Default for reflective: XYZ
+                                render_bento_item(
+                                    ui,
+                                    t!("gui-bento-xyz"),
+                                    fluid_card_width,
+                                    fluid_card_width,
+                                    |ui| {
+                                        let rows = [
+                                            ("X", format!("{:.3}", xyz.x)),
+                                            ("Y", format!("{:.3}", xyz.y)),
+                                            ("Z", format!("{:.3}", xyz.z)),
+                                        ];
+                                        for (label, value) in rows {
+                                            ui.horizontal(|ui| {
+                                                ui.label(label);
+                                                ui.with_layout(
+                                                    egui::Layout::right_to_left(
+                                                        egui::Align::Center,
+                                                    ),
+                                                    |ui| {
+                                                        ui.label(
+                                                            egui::RichText::new(value).strong(),
+                                                        );
+                                                    },
+                                                );
+                                            });
+                                        }
+                                    },
+                                );
+                            }
                         }
                         2 => {
+                            // If we already showed Luminance/XYZ in slot 1, we might need to push XYZ here or similar
+                            // Let's keep it simple and just show Indices
                             render_bento_item(
                                 ui,
                                 t!("gui-bento-indices"),
                                 fluid_card_width,
                                 fluid_card_width,
                                 |ui| {
-                                    let rows = [
+                                    let rows = vec![
                                         (t!("gui-bento-chroma"), format!("{:.1}", chroma)),
                                         (t!("gui-bento-hue"), format!("{:.1}°", hue)),
                                         (t!("gui-bento-cct"), format!("{:.0}K", cct)),
                                     ];
+                                    if res.spectrum.mode
+                                        == spectro_rs::spectrum::MeasurementMode::Emissive
+                                    {
+                                        // For emissive, du'v' is often more useful than Hue
+                                        // (Placeholder for now)
+                                    }
+
                                     for (label, value) in rows {
                                         ui.horizontal(|ui| {
                                             ui.label(label);

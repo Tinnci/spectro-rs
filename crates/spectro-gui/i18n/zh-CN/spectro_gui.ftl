@@ -110,6 +110,8 @@ gui-bento-history = 历史序列
 gui-bento-indices = 颜色指标
 gui-bento-sensor = 传感器
 gui-bento-info = 设备详细信息
+gui-bento-luminance = 亮度
+gui-bento-illuminance = 照度
 
 # 错误消息
 gui-error-no-device = ❌ 未找到设备

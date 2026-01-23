@@ -48,6 +48,8 @@ pub struct SpectroApp {
     pub(crate) selected_mode: MeasurementMode,
     pub(crate) last_result: Option<spectro_rs::spectrum::MeasurementResult>,
     pub(crate) last_tm30: Option<spectro_rs::tm30::TM30Metrics>,
+    pub(crate) live_result: Option<spectro_rs::spectrum::MeasurementResult>,
+    pub(crate) live_tm30: Option<spectro_rs::tm30::TM30Metrics>,
     pub(crate) measurement_history: Vec<MeasurementEntry>,
 
     // Reference/Standard for comparison
@@ -87,6 +89,9 @@ pub struct SpectroApp {
 
     // Display Calibration State
     pub(crate) display_calibration: DisplayCalibrationState,
+
+    // Selection state
+    pub(crate) selected_history_index: Option<usize>,
 }
 
 // ============================================================================
@@ -123,6 +128,8 @@ impl SpectroApp {
             selected_mode: MeasurementMode::Reflective,
             last_result: None,
             last_tm30: None,
+            live_result: None,
+            live_tm30: None,
             measurement_history: Vec::new(),
             reference_lab: None,
             delta_e_tolerance: 2.0,
@@ -146,6 +153,7 @@ impl SpectroApp {
             selected_observer: Observer::CIE1931_2,
             calibration_wizard: CalibrationWizard::new(),
             display_calibration: DisplayCalibrationState::default(),
+            selected_history_index: None,
         }
     }
 
@@ -157,7 +165,11 @@ impl SpectroApp {
         self.last_result.as_ref().map(|res| res.lab)
     }
 
-    pub(crate) fn add_to_history(&mut self, result: spectro_rs::spectrum::MeasurementResult) {
+    pub(crate) fn add_to_history(
+        &mut self,
+        result: spectro_rs::spectrum::MeasurementResult,
+        tm30: Option<spectro_rs::tm30::TM30Metrics>,
+    ) {
         let lab = result.lab;
         let delta_e = self
             .reference_lab
@@ -168,13 +180,23 @@ impl SpectroApp {
             timestamp: chrono::Local::now().format("%H:%M:%S").to_string(),
             mode: self.selected_mode,
             result, // Using the new consolidated result
+            tm30,
             delta_e,
         };
 
         self.measurement_history.insert(0, entry);
+        // Offset selection if we inserted before it
+        if let Some(ref mut idx) = self.selected_history_index {
+            *idx += 1;
+        }
+
         // Keep only last 50 measurements
         if self.measurement_history.len() > 50 {
             self.measurement_history.pop();
+            // Deselect if we popped the selected item
+            if self.selected_history_index == Some(50) {
+                self.selected_history_index = None;
+            }
         }
     }
 
@@ -325,13 +347,22 @@ impl eframe::App for SpectroApp {
                     self.is_busy = false;
                 }
                 UIUpdate::Result(data, tm30) => {
+                    let tm30_val = tm30.map(|b| *b);
                     if self.current_view == AppView::DisplayCalibration {
                         self.display_calibration.handle_result(data.xyz);
                     } else {
-                        self.add_to_history(data.clone());
+                        self.add_to_history(data.clone(), tm30_val.clone());
                     }
+
+                    // Always update live result
+                    self.live_result = Some(data.clone());
+                    self.live_tm30 = tm30_val.clone();
+
+                    // Update visible result only if not explicitly viewing history
+                    // (Or if we want to auto-switch to new measurement, which is usually preferred)
                     self.last_result = Some(data);
-                    self.last_tm30 = tm30.map(|b| *b);
+                    self.last_tm30 = tm30_val;
+                    self.selected_history_index = None; // Reset to "Live" when new data arrives
                     self.is_busy = false;
                 }
                 UIUpdate::Error(err) => {
