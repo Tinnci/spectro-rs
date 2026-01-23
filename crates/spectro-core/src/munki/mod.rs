@@ -558,8 +558,25 @@ impl<T: Transport> Spectrometer for Munki<T> {
         writeln!(report, "ADC Type:      {}", self.config.adctype).unwrap();
         writeln!(report, "Target Min:    {:.0}", self.config.minsval).unwrap();
         writeln!(report, "Target Opt:    {:.0}", self.config.optsval).unwrap();
-        writeln!(report, "Target Max:    {:.0}", self.config.maxsval).unwrap();
         writeln!(report, "Saturation:    {:.0}", self.config.satlimit).unwrap();
+        writeln!(
+            report,
+            "Lin Normal:    [{:.4e}, {:.4e}, {:.4e}, {:.4e}]",
+            self.config.lin_normal[0],
+            self.config.lin_normal[1],
+            self.config.lin_normal[2],
+            self.config.lin_normal[3]
+        )
+        .unwrap();
+        writeln!(
+            report,
+            "Lin High:      [{:.4e}, {:.4e}, {:.4e}, {:.4e}]",
+            self.config.lin_high[0],
+            self.config.lin_high[1],
+            self.config.lin_high[2],
+            self.config.lin_high[3]
+        )
+        .unwrap();
         writeln!(report).unwrap();
 
         writeln!(report, "--- Linearity Test (Lamp ON) ---").unwrap();
@@ -656,4 +673,117 @@ impl<T: Transport> Spectrometer for Munki<T> {
 
         Ok(report)
     }
+
+    fn characterize_sensor(&mut self) -> Result<String> {
+        self.flush_input()?;
+        let (pos, _) = self.get_raw_status()?;
+        if pos != 2 {
+            return Err(crate::SpectroError::Device(
+                "Characterization requires device to be in Calibration (White Tile) position."
+                    .into(),
+            ));
+        }
+
+        let mut csv =
+            String::from("Time(s),Counts,Rate,Ideal,Deviation(%),Corrected_Rate,Error(%)\n");
+        let _tick = self.firmware.tick_duration as f64 * 1e-6;
+
+        // Scan from min_time up to ~40ms
+        let mut t = 0.001; // Start at 1ms
+        let step = 0.0005;
+        let max_scan = 0.040;
+
+        let mut points = Vec::new();
+
+        // 1. Data Acquisition
+        while t <= max_scan {
+            if let Ok(raw) = self.measure_integration(t, true, false) {
+                let peak = raw.iter().max().copied().unwrap_or(0) as f64;
+                points.push((t, peak));
+
+                if (peak > 65400.0 || (peak > 12200.0 && peak < 13000.0 && t > 0.020)) && t > 0.015
+                {
+                    break;
+                }
+            }
+            t += step;
+        }
+
+        // 2. Physics Modeling
+        use crate::munki::physics::SensorModel;
+        // Provide hint from EEPROM or observation
+        let sat_hint = self.config.satlimit.max(12200.0);
+        let model = SensorModel::estimate_parameters(&points, sat_hint);
+
+        // 3. Analysis & Reporting
+        // Calculate true intensity k from the most linear region (e.g. 10ms - 15ms)
+        let mut k_sum = 0.0;
+        let mut k_count = 0;
+
+        for (pt_t, pt_y) in &points {
+            if *pt_t >= 0.010
+                && *pt_t <= 0.015
+                && let Ok(k) = model.solve_intensity(*pt_y, *pt_t)
+            {
+                k_sum += k;
+                k_count += 1;
+            }
+        }
+        let true_k = if k_count > 0 {
+            k_sum / k_count as f64
+        } else {
+            0.0
+        };
+
+        // Generate CSV rows with correction data
+        let mut first = true;
+        let mut baseline_rate = 0.0;
+
+        for (pt_t, pt_y) in &points {
+            let rate = pt_y / pt_t;
+            if first && *pt_t >= 0.008 {
+                // Start baseline AFTER dead zone
+                baseline_rate = rate;
+                first = false;
+            }
+
+            let ideal = if baseline_rate > 0.0 {
+                pt_t * baseline_rate
+            } else {
+                *pt_y
+            };
+            let dev = if ideal > 0.0 {
+                (pt_y - ideal) / ideal * 100.0
+            } else {
+                0.0
+            };
+
+            // Apply Physics Correction
+            let corrected_k = model.solve_intensity(*pt_y, *pt_t).unwrap_or(0.0);
+            let phys_err = if true_k > 0.0 {
+                (corrected_k - true_k) / true_k * 100.0
+            } else {
+                0.0
+            };
+
+            use std::fmt::Write;
+            writeln!(
+                csv,
+                "{:.6},{:.1},{:.1},{:.1},{:.2},{:.1},{:.2}",
+                pt_t, pt_y, rate, ideal, dev, corrected_k, phys_err
+            )
+            .unwrap();
+        }
+
+        use std::fmt::Write;
+        writeln!(csv, "\n=== Physics Model Analysis ===").unwrap();
+        writeln!(csv, "Dead Time (t_dead): {:.6} s", model.t_dead).unwrap();
+        writeln!(csv, "Bias Level (y_bias): {:.1}", model.y_bias).unwrap();
+        writeln!(csv, "Saturation (y_sat):  {:.1}", model.y_sat).unwrap();
+        writeln!(csv, "True Intensity (k):  {:.1} (Target Constant)", true_k).unwrap();
+
+        println!("{}", csv);
+        Ok(csv)
+    }
 }
+pub mod physics;

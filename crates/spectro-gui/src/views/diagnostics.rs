@@ -16,14 +16,28 @@ pub fn render_diagnostics_view(app: &mut SpectroApp, ctx: &egui::Context) {
                 ui.spinner();
                 ui.label(app.status_msg.clone());
             });
-        } else if ui.button("▶️ Run Diagnostics").clicked() {
-            if !app.is_connected {
-                app.status_msg = "Device not connected".into();
-            } else {
-                app.is_busy = true;
-                app.cmd_tx.send(DeviceCommand::TestSensor).ok();
-                app.diagnostics_report = None;
-            }
+        } else {
+            ui.horizontal(|ui| {
+                if ui.button("▶️ Run Diagnostics").clicked() {
+                    if !app.is_connected {
+                        app.status_msg = "Device not connected".into();
+                    } else {
+                        app.is_busy = true;
+                        app.cmd_tx.send(DeviceCommand::TestSensor).ok();
+                        app.diagnostics_report = None;
+                    }
+                }
+
+                if ui.button("🔬 Characterize Sensor").clicked() {
+                     if !app.is_connected {
+                        app.status_msg = "Device not connected".into();
+                    } else {
+                        app.is_busy = true;
+                        app.cmd_tx.send(DeviceCommand::CharacterizeSensor).ok();
+                        app.diagnostics_report = None;
+                    }
+                }
+            });
         }
 
         ui.add_space(20.0);

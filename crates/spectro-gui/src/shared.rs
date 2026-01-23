@@ -45,6 +45,7 @@ pub enum DeviceCommand {
     Calibrate,
     Measure(MeasurementMode),
     TestSensor,
+    CharacterizeSensor,
 }
 
 /// Messages sent from the Device worker thread to the UI thread.
@@ -56,6 +57,7 @@ pub enum UIUpdate {
         Option<Box<TM30Metrics>>,
     ),
     TestResult(String),
+    CharacterizationResult(String),
     Error(String),
     Disconnected,
 }

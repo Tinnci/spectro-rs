@@ -238,6 +238,10 @@ impl eframe::App for SpectroApp {
                     self.diagnostics_report = Some(report);
                     self.is_busy = false;
                 }
+                UIUpdate::CharacterizationResult(csv) => {
+                    self.diagnostics_report = Some(csv);
+                    self.is_busy = false;
+                }
             }
         }
 

@@ -124,6 +124,14 @@ pub trait Spectrometer {
             "Not supported by this device".into(),
         ))
     }
+
+    /// Performs a high-resolution sweep to characterize the sensor's transfer function.
+    /// Returns CSV data.
+    fn characterize_sensor(&mut self) -> Result<String> {
+        Err(crate::SpectroError::Device(
+            "Not supported by this device".into(),
+        ))
+    }
 }
 
 /// A boxed spectrometer for dynamic dispatch.
