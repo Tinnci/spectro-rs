@@ -9,6 +9,14 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
+/// Physics model parameters for sensor correction.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PhysicsConfig {
+    pub y_bias: f64,
+    pub y_sat: f64,
+    pub t_dead: f64,
+}
+
 /// Calibration data for a specific device.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CalibrationData {
@@ -20,6 +28,9 @@ pub struct CalibrationData {
     pub dark_ref: Vec<u16>,
     /// White calibration scaling factors.
     pub white_cal_factors: Vec<f32>,
+    /// Optional physics-based sensor geometry.
+    #[serde(default)]
+    pub physics_config: Option<PhysicsConfig>,
 }
 
 /// Gets the directory where calibration data should be stored.
@@ -44,7 +55,12 @@ fn get_cal_path(serial: &str) -> Result<PathBuf> {
 }
 
 /// Saves calibration data for a device.
-pub fn save_calibration(serial: &str, dark_ref: &[u16], factors: &[f32]) -> Result<()> {
+pub fn save_calibration(
+    serial: &str,
+    dark_ref: &[u16],
+    factors: &[f32],
+    physics: Option<PhysicsConfig>,
+) -> Result<()> {
     let data = CalibrationData {
         serial: serial.to_string(),
         timestamp: std::time::SystemTime::now()
@@ -53,6 +69,7 @@ pub fn save_calibration(serial: &str, dark_ref: &[u16], factors: &[f32]) -> Resu
             .as_secs(),
         dark_ref: dark_ref.to_vec(),
         white_cal_factors: factors.to_vec(),
+        physics_config: physics,
     };
 
     let path = get_cal_path(serial)?;

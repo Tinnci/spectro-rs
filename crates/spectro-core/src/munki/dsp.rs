@@ -20,14 +20,13 @@ impl SignalProcessor {
         raw_data: &[u16],
         dark_ref: Option<&[u16]>,
         white_factors: Option<&[f32]>,
+        physics_model: Option<&crate::munki::physics::SensorModel>,
         high_gain: bool,
         mode: MeasurementMode,
     ) -> Result<SpectralData> {
         let offset = 6;
 
         // 1. Adaptive Dark Current Compensation
-        // The first 4 readings (0-3) are photo-shielded cells.
-        // We use them to detect and compensate for thermal drift since the last calibration.
         let drift = if let Some(dark) = dark_ref {
             let curr_shield_avg: f64 = raw_data[0..4].iter().map(|&x| x as f64).sum::<f64>() / 4.0;
             let ref_shield_avg: f64 = dark[0..4].iter().map(|&x| x as f64).sum::<f64>() / 4.0;
@@ -60,22 +59,40 @@ impl SignalProcessor {
             if let Some(dark) = dark_ref
                 && offset + i < dark.len()
             {
-                val -= dark[offset + i] as f64 + drift;
+                // Drift compensation is always needed
+                val -= drift;
+
+                // If using Physics Model -> Do NOT subtract static dark frame (model handles bias).
+                // If using Legacy Model  -> MUST subtract static dark frame.
+                if physics_model.is_none() {
+                    val -= dark[offset + i] as f64;
+                }
             }
 
-            // High-quality sensors should not have negative light,
-            // but noise can push it slightly negative after subtraction.
+            // High-quality sensors should not have negative light
             val = val.max(0.0);
 
-            // Apply linearization polynomial (3rd order)
-            // L(v) = p3*v^3 + p2*v^2 + p1*v + p0
-            let mut lval = polys[3] as f64;
-            lval = lval * val + polys[2] as f64;
-            lval = lval * val + polys[1] as f64;
-            lval = lval * val + polys[0] as f64;
+            if let Some(model) = physics_model {
+                // --- PHYSICS PATH ---
+                // 1. Linearize using physical transfer function: k = (y - bias) / (t - dead)
+                let k_rate = model
+                    .solve_intensity(val, integration_time_sec)
+                    .unwrap_or(0.0);
 
-            // Scale by integration time (Counts/Sec)
-            linearized.push((lval * scale) as f32);
+                // 2. Map to legacy energy scale using P1 (Gain) and P0 (Offset)
+                let ideal_counts = k_rate * integration_time_sec;
+                val = ideal_counts * polys[1] as f64 + polys[0] as f64;
+            } else {
+                // --- LEGACY PATH ---
+                let mut lval = polys[3] as f64;
+                lval = lval * val + polys[2] as f64;
+                lval = lval * val + polys[1] as f64;
+                lval = lval * val + polys[0] as f64;
+                val = lval;
+            }
+
+            // Scale by integration time to get per-second rate
+            linearized.push((val * scale) as f32);
         }
 
         // 2. Map processed sensor data to wavelengths (Matrix Multiplication)

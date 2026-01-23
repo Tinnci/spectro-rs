@@ -67,6 +67,7 @@ pub struct Munki<T: Transport> {
     firmware: MunkiFirmwareInfo,
     dark_ref: Option<Vec<u16>>,
     white_cal_factors: Option<Vec<f32>>,
+    physics_config: Option<physics::SensorModel>,
 }
 
 impl<T: Transport> Munki<T> {
@@ -86,6 +87,7 @@ impl<T: Transport> Munki<T> {
         // Try to load existing calibration data for this device
         let mut dark_ref = None;
         let mut white_cal_factors = None;
+        let mut physics_config = None;
 
         if let Ok(Some(cal)) = crate::persistence::load_calibration(&config.serial_number) {
             // Basic validation: ensure the lengths match what we expect
@@ -96,6 +98,18 @@ impl<T: Transport> Munki<T> {
                 );
                 dark_ref = Some(cal.dark_ref);
                 white_cal_factors = Some(cal.white_cal_factors);
+
+                if let Some(phys) = cal.physics_config {
+                    println!(
+                        "Loaded Sensor Physics Model: bias={:.1}, dead={:.6}s",
+                        phys.y_bias, phys.t_dead
+                    );
+                    physics_config = Some(physics::SensorModel {
+                        y_bias: phys.y_bias,
+                        y_sat: phys.y_sat,
+                        t_dead: phys.t_dead,
+                    });
+                }
             }
         }
 
@@ -105,6 +119,7 @@ impl<T: Transport> Munki<T> {
             firmware,
             dark_ref,
             white_cal_factors,
+            physics_config,
         })
     }
 
@@ -353,6 +368,7 @@ impl<T: Transport> Munki<T> {
             raw_137,
             self.dark_ref.as_deref(),
             self.white_cal_factors.as_deref(),
+            self.physics_config.as_ref(),
             high_gain,
             mode,
         )
@@ -452,7 +468,12 @@ impl<T: Transport> Munki<T> {
         // Persist calibration data
         // Persist calibration data
         if let (Some(dark), Some(white)) = (&self.dark_ref, &self.white_cal_factors) {
-            let _ = crate::persistence::save_calibration(&self.config.serial_number, dark, white);
+            let _ = crate::persistence::save_calibration(
+                &self.config.serial_number,
+                dark,
+                white,
+                self.physics_config.clone().map(|p| p.into()),
+            );
         }
 
         Ok(())

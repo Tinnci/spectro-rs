@@ -114,3 +114,23 @@ impl SensorModel {
         Self::new(y_bias, y_sat_hint, t_dead)
     }
 }
+
+impl From<SensorModel> for crate::persistence::PhysicsConfig {
+    fn from(m: SensorModel) -> Self {
+        Self {
+            y_bias: m.y_bias,
+            y_sat: m.y_sat,
+            t_dead: m.t_dead,
+        }
+    }
+}
+
+impl From<&SensorModel> for crate::persistence::PhysicsConfig {
+    fn from(m: &SensorModel) -> Self {
+        Self {
+            y_bias: m.y_bias,
+            y_sat: m.y_sat,
+            t_dead: m.t_dead,
+        }
+    }
+}
