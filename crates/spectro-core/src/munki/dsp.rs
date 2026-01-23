@@ -39,6 +39,28 @@ impl SignalProcessor {
             println!("DEBUG: Thermal drift detected: {:.2} counts", drift);
         }
 
+        // Debug raw sensor stats
+        if mode == MeasurementMode::Reflective {
+            let min_raw = raw_data.iter().min().unwrap_or(&0);
+            let max_raw = raw_data.iter().max().unwrap_or(&0);
+            let avg_raw: f64 =
+                raw_data.iter().map(|&x| x as f64).sum::<f64>() / raw_data.len() as f64;
+            println!(
+                "DEBUG: Raw Sensor Stats (Lamp ON): Min={}, Max={}, Avg={:.1}",
+                min_raw, max_raw, avg_raw
+            );
+
+            if let Some(dark) = dark_ref {
+                let min_dark = dark.iter().min().unwrap_or(&0);
+                let max_dark = dark.iter().max().unwrap_or(&0);
+                let avg_dark: f64 = dark.iter().map(|&x| x as f64).sum::<f64>() / dark.len() as f64;
+                println!(
+                    "DEBUG: Dark Ref Stats (Lamp OFF): Min={}, Max={}, Avg={:.1}",
+                    min_dark, max_dark, avg_dark
+                );
+            }
+        }
+
         let mut linearized = Vec::with_capacity(128);
         let polys = if high_gain {
             &config.lin_high
@@ -136,7 +158,99 @@ impl SignalProcessor {
                 }
             }
 
-            values.push(sum);
+            values.push(sum.max(0.0));
+        }
+
+        // 4. Blind Zone Compensation (Reflective Mode Only)
+        // The sensor relies on a White LED which has no energy in UV (<420nm) and IR (>690nm).
+        // In these "Blind Zones", the signal is 0, which results in Reflectance = 0 (Black).
+        // This causes artifacts (e.g. White Tile looks Green because Blue/Red bands are black).
+        // Fix: Use nearest-neighbor interpolation for bands where White Calibration Signal was too low.
+        if mode == MeasurementMode::Reflective
+            && let Some(factors) = white_factors
+        {
+            // Signal-Gated Spectral Extrapolation
+            // Instead of checking factors (which are inverted), we estimate the original White Signal.
+            // White_Signal ~= Reference / Factor
+
+            // 1. Calculate Peak Signal across all bands
+            let max_white_signal = (0..factors.len())
+                .map(|i| {
+                    let white_ref = config.white_ref.get(i).copied().unwrap_or(0.96);
+                    let factor = factors.get(i).copied().unwrap_or(1.0);
+                    if factor > 1e-9 {
+                        white_ref / factor
+                    } else {
+                        0.0
+                    }
+                })
+                .fold(0.0f32, |a, b| a.max(b));
+
+            // 2. Set dynamic threshold: only trust data above 25% of the peak
+            // This ensures we anchor to the stable center of the blue peak, avoiding unstable slopes.
+            let dynamic_threshold = max_white_signal * 0.25;
+            println!(
+                "DEBUG: Extrapolation Dynamic Threshold = {:.1} (Peak = {:.1})",
+                dynamic_threshold, max_white_signal
+            );
+
+            // 3. Find the range of valid (non-blind) bands
+            let mut first_valid = None;
+            let mut last_valid = None;
+
+            for (i, &factor) in factors.iter().enumerate().take(values.len()) {
+                let white_ref = config.white_ref.get(i).copied().unwrap_or(0.96);
+
+                // Avoid division by zero if factor is 0 (shouldn't happen)
+                let signal = if factor > 1e-9 {
+                    white_ref / factor
+                } else {
+                    0.0
+                };
+
+                if signal > dynamic_threshold {
+                    if first_valid.is_none() {
+                        first_valid = Some(i);
+                    }
+                    last_valid = Some(i);
+                }
+            }
+
+            if let (Some(first), Some(last)) = (first_valid, last_valid) {
+                println!(
+                    "DEBUG: Blind Zone Extrapolation: Valid=[{}-{}], R[first]={:.4}",
+                    first, last, values[first]
+                );
+                // We don't trust the very first point (first) as it's often on the unstable slope.
+                // Use the next point inside (first + 1) for a more robust anchor.
+                let safe_anchor_idx = (first + 1).min(last);
+                let anchor_value = values[safe_anchor_idx];
+
+                // Extrapolate UV/Blue (Left side) - include the 'first' band itself
+                for v in values.iter_mut().take(first + 1) {
+                    *v = anchor_value;
+                }
+
+                // Extrapolate IR/Red (Right side)
+                let end_val = values[last];
+                for v in values.iter_mut().skip(last + 1) {
+                    *v = end_val;
+                }
+            }
+        }
+
+        // 5. Spectral Smoothing (Boxcar Filter)
+        // Apply a 3-point sliding average [0.25, 0.5, 0.25] to smooth out random noise and improve Lab stability.
+        // We do this after extrapolation so that the edges are already stable.
+        if mode == MeasurementMode::Reflective {
+            let mut smoothed = values.clone();
+            let len = values.len();
+            for i in 1..(len - 1) {
+                smoothed[i] = 0.25 * values[i - 1] + 0.5 * values[i] + 0.25 * values[i + 1];
+            }
+            // Simple edge handling (replicate) or just leave them (since extrapolated)
+            // We'll leave 0 and len-1 as they are (or extrapolated value).
+            values = smoothed;
         }
 
         // Debug output to diagnose spectral processing

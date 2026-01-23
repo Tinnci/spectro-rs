@@ -37,8 +37,8 @@ impl AutoExposure {
     pub fn new(min_time_sec: f64, target_counts: f64, max_counts: f64) -> Self {
         Self {
             target_counts,
-            // Accept anything between 40% and 120% of target as "good enough"
-            min_counts: target_counts * 0.4,
+            // Accept anything between 85% and 120% of target to force high dynamic range
+            min_counts: target_counts * 0.85,
             max_counts,
 
             min_time_sec,

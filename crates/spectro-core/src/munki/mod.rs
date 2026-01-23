@@ -294,12 +294,46 @@ impl<T: Transport> Munki<T> {
             .ok_or(crate::SpectroError::Device("No data".into()))
     }
 
+    fn measure_scanned_average(
+        &self,
+        duration_sec: f64,
+        lamp: bool,
+        high_gain: bool,
+        count: usize,
+    ) -> Result<Vec<u16>> {
+        let mut sum_buf = vec![0.0f64; 137];
+
+        println!(
+            "DEBUG: Oversampling {} frames at {:.4}s...",
+            count, duration_sec
+        );
+
+        for _ in 0..count {
+            let raw = self.measure_integration(duration_sec, lamp, high_gain)?;
+            if raw.len() != 137 {
+                return Err(crate::SpectroError::Device(
+                    "Invalid sensor data length".into(),
+                ));
+            }
+            for (i, val) in raw.iter().enumerate() {
+                sum_buf[i] += *val as f64;
+            }
+        }
+
+        let avg: Vec<u16> = sum_buf
+            .iter()
+            .map(|x| (x / count as f64).round() as u16)
+            .collect();
+        Ok(avg)
+    }
+
     fn measure_spot(
         &self,
         lamp: bool,
         high_gain: bool,
         force_time: Option<f64>,
     ) -> Result<(Vec<u16>, f64)> {
+        const OVERSAMPLE_COUNT: usize = 8;
         let mut min_time =
             (self.firmware.min_int_count as f64 * self.firmware.tick_duration as f64) * 1e-6;
 
@@ -310,18 +344,20 @@ impl<T: Transport> Munki<T> {
 
         // If a specific time is requested, use it directly (bypass AE)
         if let Some(t) = force_time {
-            let raw = self.measure_integration(t, lamp, high_gain)?;
+            let raw = self.measure_scanned_average(t, lamp, high_gain, OVERSAMPLE_COUNT)?;
             return Ok((raw, t));
         }
 
-        let mut ae =
-            exposure::AutoExposure::new(min_time, self.config.optsval, self.config.satlimit);
+        // Force high dynamic range (Target = 10500) as requested to maximize signal in UV/IR bands.
+        // Also force min_time to 0.015s to ensure edge bands get enough light.
+        let target_exposure = 10500.0;
+        min_time = min_time.max(0.015);
+        let mut ae = exposure::AutoExposure::new(min_time, target_exposure, self.config.satlimit);
         let mut current_time = min_time;
 
         // Start with a quick measurement
         let mut raw = self.measure_integration(current_time, lamp, high_gain)?;
 
-        let mut last_good_raw = raw.clone();
         let mut last_good_time = current_time;
 
         for i in 0..5 {
@@ -337,7 +373,8 @@ impl<T: Transport> Munki<T> {
                             "Auto-Exposure: Saturation detected. Reverting to time={:.4}s",
                             last_good_time
                         );
-                        return Ok((last_good_raw, last_good_time));
+                        current_time = last_good_time;
+                        break;
                     } else {
                         break;
                     }
@@ -348,16 +385,17 @@ impl<T: Transport> Munki<T> {
                         max_val, current_time, new_time
                     );
 
-                    last_good_raw = raw;
                     last_good_time = current_time;
-
                     current_time = new_time;
                     raw = self.measure_integration(current_time, lamp, high_gain)?;
                 }
             }
         }
 
-        Ok((raw, current_time))
+        // Perform final production measurement with oversampling
+        let final_raw =
+            self.measure_scanned_average(current_time, lamp, high_gain, OVERSAMPLE_COUNT)?;
+        Ok((final_raw, current_time))
     }
 
     fn process_spectrum(
