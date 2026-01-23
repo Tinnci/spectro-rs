@@ -38,6 +38,7 @@ pub struct MunkiFirmwareInfo {
 
 pub mod dsp;
 pub mod eeprom;
+pub mod exposure;
 pub use eeprom::MunkiConfig;
 
 /// ColorMunki spectrometer driver.
@@ -140,6 +141,19 @@ impl<T: Transport> Munki<T> {
         })
     }
 
+    fn flush_input(&self) -> Result<()> {
+        let mut buf = [0u8; 64];
+        let timeout = Duration::from_millis(10);
+        // Try to read until we get a timeout or empty read to clear the pipe
+        loop {
+            match self.transport.interrupt_read(EP_DATA_IN, &mut buf, timeout) {
+                Ok(n) if n > 0 => continue,
+                _ => break,
+            }
+        }
+        Ok(())
+    }
+
     fn read_eeprom(transport: &T, addr: u32, size: u32) -> Result<Vec<u8>> {
         let mut params = [0u8; 8];
         params[0..4].copy_from_slice(&addr.to_le_bytes());
@@ -233,11 +247,17 @@ impl<T: Transport> Munki<T> {
         Ok(readings)
     }
 
-    fn measure_spot(&self, lamp: bool, high_gain: bool) -> Result<Vec<u16>> {
+    fn measure_integration(
+        &self,
+        duration_sec: f64,
+        lamp: bool,
+        high_gain: bool,
+    ) -> Result<Vec<u16>> {
+        // Clear any stale data from previous measurements
+        self.flush_input()?;
+
         let tick_sec = self.firmware.tick_duration as f64 * 1e-6;
-        let int_time_sec =
-            (self.firmware.min_int_count * self.firmware.tick_duration) as f64 * 1e-6;
-        let int_clocks = (int_time_sec / tick_sec).round() as u32;
+        let int_clocks = (duration_sec / tick_sec).round() as u32;
 
         let mut flags = 0;
         if lamp {
@@ -250,7 +270,7 @@ impl<T: Transport> Munki<T> {
         self.trigger_measure(int_clocks, 1, flags)?;
         // Wait for measurement to complete.
         // ArgyllCMS uses ~150ms safety margin; we use 200ms for extra robustness.
-        std::thread::sleep(Duration::from_millis((int_time_sec * 1000.0) as u64 + 200));
+        std::thread::sleep(Duration::from_millis((duration_sec * 1000.0) as u64 + 200));
 
         let readings = self.read_measurement(1)?;
         readings
@@ -259,15 +279,73 @@ impl<T: Transport> Munki<T> {
             .ok_or(crate::SpectroError::Device("No data".into()))
     }
 
+    fn measure_spot(
+        &self,
+        lamp: bool,
+        high_gain: bool,
+        force_time: Option<f64>,
+    ) -> Result<(Vec<u16>, f64)> {
+        let min_time =
+            (self.firmware.min_int_count as f64 * self.firmware.tick_duration as f64) * 1e-6;
+
+        // If a specific time is requested, use it directly (bypass AE)
+        if let Some(t) = force_time {
+            let raw = self.measure_integration(t, lamp, high_gain)?;
+            return Ok((raw, t));
+        }
+
+        let mut ae = exposure::AutoExposure::new(min_time);
+        let mut current_time = min_time;
+
+        // Start with a quick measurement
+        let mut raw = self.measure_integration(current_time, lamp, high_gain)?;
+
+        let mut last_good_raw = raw.clone();
+        let mut last_good_time = current_time;
+
+        for i in 0..5 {
+            let max_val = raw.iter().max().copied().unwrap_or(0);
+
+            match ae.calculate_next(current_time, max_val, i) {
+                exposure::ExposureAction::Success | exposure::ExposureAction::MaxRetriesReached => {
+                    break;
+                }
+                exposure::ExposureAction::Undo => {
+                    if i > 0 {
+                        println!(
+                            "Auto-Exposure: Saturation detected. Reverting to time={:.4}s",
+                            last_good_time
+                        );
+                        return Ok((last_good_raw, last_good_time));
+                    } else {
+                        break;
+                    }
+                }
+                exposure::ExposureAction::Retry(new_time) => {
+                    println!(
+                        "Auto-Exposure: Peak={}, Time={:.4}s -> Adjusting to {:.4}s",
+                        max_val, current_time, new_time
+                    );
+
+                    last_good_raw = raw;
+                    last_good_time = current_time;
+
+                    current_time = new_time;
+                    raw = self.measure_integration(current_time, lamp, high_gain)?;
+                }
+            }
+        }
+
+        Ok((raw, current_time))
+    }
+
     fn process_spectrum(
         &self,
         raw_137: &[u16],
         high_gain: bool,
         mode: MeasurementMode,
+        int_time_sec: f64,
     ) -> Result<SpectralData> {
-        let int_time_sec =
-            (self.firmware.min_int_count * self.firmware.tick_duration) as f64 * 1e-6;
-
         dsp::SignalProcessor::process(
             &self.config,
             int_time_sec,
@@ -288,7 +366,9 @@ impl<T: Transport> Munki<T> {
         }
 
         // Dark frame calibration (lamp off)
-        let raw_dark = self.measure_spot(false, false)?;
+        let min_time =
+            (self.firmware.min_int_count as f64 * self.firmware.tick_duration as f64) * 1e-6;
+        let (raw_dark, _) = self.measure_spot(false, false, Some(min_time))?;
         // Check dark current quality
         let dark_avg: f32 = raw_dark.iter().map(|&x| x as f32).sum::<f32>() / raw_dark.len() as f32;
         let dark_max = raw_dark.iter().max().unwrap_or(&0);
@@ -301,7 +381,8 @@ impl<T: Transport> Munki<T> {
         self.dark_ref = Some(raw_dark);
 
         // White tile calibration (lamp on)
-        let raw_white = self.measure_spot(true, false)?;
+        // Use Auto-Exposure for white tile to get best signal
+        let (raw_white, white_time) = self.measure_spot(true, false, None)?;
         // Check signal strength
         let white_avg: f32 =
             raw_white.iter().map(|&x| x as f32).sum::<f32>() / raw_white.len() as f32;
@@ -316,7 +397,8 @@ impl<T: Transport> Munki<T> {
 
         // Process without white calibration factors
         let old_factors = self.white_cal_factors.take();
-        let spec = self.process_spectrum(&raw_white, false, MeasurementMode::Reflective)?;
+        let spec =
+            self.process_spectrum(&raw_white, false, MeasurementMode::Reflective, white_time)?;
         self.white_cal_factors = old_factors;
 
         // Compute calibration factors
@@ -438,8 +520,8 @@ impl<T: Transport> Spectrometer for Munki<T> {
             MeasurementMode::Ambient => (false, false),
         };
 
-        let raw = self.measure_spot(lamp, high_gain)?;
-        self.process_spectrum(&raw, high_gain, mode)
+        let (raw, time) = self.measure_spot(lamp, high_gain, None)?;
+        self.process_spectrum(&raw, high_gain, mode, time)
     }
 
     fn supported_modes(&self) -> Vec<MeasurementMode> {
