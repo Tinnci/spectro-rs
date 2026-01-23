@@ -106,12 +106,81 @@ pub fn render_calibration_view(
     ui: &mut egui::Ui,
     ctx: &mut CalibrationViewContext,
 ) -> CalibrationAction {
-    match ctx.state.step {
+    // 1. Render the active view
+    let action = match ctx.state.step {
         CalStep::Intro => render_intro(ui, ctx),
         CalStep::Setup => render_setup(ui, ctx),
         CalStep::Measure => render_measure(ui, ctx),
         CalStep::Result => render_result(ui, ctx),
+    };
+
+    // 2. Global Overlay Rendering (Top-Most Layer)
+    // We handle overlay logic here to ensure it covers EVERYTHING, including headers/sidebars if possible,
+    // and to share logic between Setup (ref measure) and Measure (ramp measure) steps.
+    let overlay_color = if ctx.state.is_measuring {
+        match ctx.state.current_target {
+            CalibrationTarget::White => Some(egui::Color32::WHITE),
+            CalibrationTarget::Black => Some(egui::Color32::BLACK),
+            CalibrationTarget::Ramp => {
+                // Get current ramp color from session
+                if let Some(session) = &ctx.state.session {
+                    let level = session.current_level().unwrap_or(0.0);
+                    let val = (level * 255.0) as u8;
+                    Some(egui::Color32::from_gray(val))
+                } else {
+                    None
+                }
+            }
+            CalibrationTarget::None => None,
+        }
+    } else {
+        None
+    };
+
+    if let Some(color) = overlay_color {
+        // Use the Debug layer which is always on top of CentralPanel, Windows, and Areas
+        let painter = ui.ctx().layer_painter(egui::LayerId::debug());
+        let screen_rect = ui.ctx().input(|i| i.screen_rect());
+
+        // Fill entire screen
+        painter.rect_filled(screen_rect, 0.0, color);
+
+        // Draw status text in the center
+        // We need to manually paint text since we are bypassing the layout system
+        let text_color = if color.r() > 100 {
+            egui::Color32::BLACK
+        } else {
+            egui::Color32::WHITE
+        };
+
+        let status_text = match ctx.state.current_target {
+            CalibrationTarget::Ramp => {
+                if let Some(session) = &ctx.state.session {
+                    let (idx, total) = session.progress();
+                    format!("Measuring Step {}/{}\nRGB: {}", idx + 1, total, color.r())
+                } else {
+                    "Measuring...".to_string()
+                }
+            }
+            _ => "📷 Measuring Reference...".to_string(),
+        };
+
+        // Paint text at center
+        let font_id = egui::FontId::proportional(24.0);
+        painter.text(
+            screen_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            status_text,
+            font_id,
+            text_color,
+        );
+
+        // Hide cursor during measurement for full immersion
+        ui.ctx()
+            .output_mut(|o| o.cursor_icon = egui::CursorIcon::None);
     }
+
+    action
 }
 
 fn render_intro(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> CalibrationAction {
@@ -145,52 +214,64 @@ fn render_intro(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> Calibrat
 
 fn render_setup(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> CalibrationAction {
     let mut action = CalibrationAction::None;
+    let visuals = ui.ctx().style().visuals.clone();
+
     ui.vertical_centered(|ui| {
         ui.heading("Calibration Settings");
-        ui.add_space(20.0);
+        ui.add_space(ctx.layout.spacing);
 
-        egui::Grid::new("cal_settings_grid")
-            .spacing([20.0, 10.0])
-            .show(ui, |ui| {
-                ui.label("Target Gamma:");
-                ui.add(egui::Slider::new(&mut ctx.state.target_gamma, 1.0..=3.0).step_by(0.1));
-                ui.end_row();
-
-                ui.label("White Point:");
-                ui.label("D65 (Fixed for now)");
-                ui.end_row();
-
-                ui.label("Samples:");
-                ui.add(egui::Slider::new(&mut ctx.state.total_patches, 2..=33));
-                ui.end_row();
+        // --- Bento Grid Layout ---
+        ui.horizontal(|ui| {
+            // Card 1: Parameters
+            render_card(ui, "🎯 Target Parameters", 200.0, |ui| {
+                ui.vertical(|ui| {
+                    ui.label("Gamma:");
+                    ui.add(egui::Slider::new(&mut ctx.state.target_gamma, 1.0..=3.0).step_by(0.1));
+                    ui.add_space(8.0);
+                    ui.label("Samples:");
+                    ui.add(egui::Slider::new(&mut ctx.state.total_patches, 2..=33));
+                });
             });
 
-        ui.add_space(20.0);
-        ui.label("Reference Luminance:");
-        ui.horizontal(|ui| {
-            if ui.button("📸 Measure White").clicked() {
-                ctx.state.is_measuring = true;
-                ctx.state.current_target = CalibrationTarget::White;
-                action = CalibrationAction::RequestMeasurement;
-            }
-            if let Some(w) = ctx.state.white_luminance {
-                ui.label(format!("White: {:.2} cd/m²", w));
-            } else {
-                ui.label("White: Not measured");
-            }
+            ui.add_space(ctx.layout.spacing);
 
-            ui.add_space(20.0);
+            // Card 2: White Reference
+            render_card(ui, "⚪ White Reference", 180.0, |ui| {
+                ui.vertical_centered(|ui| {
+                    if let Some(w) = ctx.state.white_luminance {
+                        ui.heading(format!("{:.1}", w));
+                        ui.label("cd/m²");
+                    } else {
+                        ui.label("Not Measured");
+                    }
+                    ui.add_space(8.0);
+                    if ui.button("📸 Measure").clicked() {
+                        ctx.state.is_measuring = true;
+                        ctx.state.current_target = CalibrationTarget::White;
+                        action = CalibrationAction::RequestMeasurement;
+                    }
+                });
+            });
 
-            if ui.button("📸 Measure Black").clicked() {
-                ctx.state.is_measuring = true;
-                ctx.state.current_target = CalibrationTarget::Black;
-                action = CalibrationAction::RequestMeasurement;
-            }
-            if let Some(b) = ctx.state.black_luminance {
-                ui.label(format!("Black: {:.3} cd/m²", b));
-            } else {
-                ui.label("Black: Not measured");
-            }
+            ui.add_space(ctx.layout.spacing);
+
+            // Card 3: Black Reference
+            render_card(ui, "⚫ Black Reference", 180.0, |ui| {
+                ui.vertical_centered(|ui| {
+                    if let Some(b) = ctx.state.black_luminance {
+                        ui.heading(format!("{:.3}", b));
+                        ui.label("cd/m²");
+                    } else {
+                        ui.label("Not Measured");
+                    }
+                    ui.add_space(8.0);
+                    if ui.button("📸 Measure").clicked() {
+                        ctx.state.is_measuring = true;
+                        ctx.state.current_target = CalibrationTarget::Black;
+                        action = CalibrationAction::RequestMeasurement;
+                    }
+                });
+            });
         });
 
         ui.add_space(40.0);
@@ -199,10 +280,16 @@ fn render_setup(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> Calibrat
             if ui.button("<< Back").clicked() {
                 ctx.state.step = CalStep::Intro;
             }
-            if ui
-                .add_enabled(ctx.is_connected, egui::Button::new("Start Measuring >>"))
-                .clicked()
-            {
+            let is_ready = ctx.is_connected && ctx.state.white_luminance.is_some();
+            let start_btn = egui::Button::new("Start Device Characteristic >>")
+                .min_size(egui::vec2(180.0, 40.0))
+                .fill(if is_ready {
+                    crate::theme::success_color(&visuals)
+                } else {
+                    visuals.widgets.inactive.bg_fill
+                });
+
+            if ui.add_enabled(is_ready, start_btn).clicked() {
                 ctx.state.session = Some(CalibrationSession::new(
                     ctx.state.target_gamma,
                     illuminant::D65,
@@ -212,8 +299,32 @@ fn render_setup(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> Calibrat
                 ctx.state.step = CalStep::Measure;
             }
         });
+        if ctx.state.white_luminance.is_none() {
+            ui.add_space(8.0);
+            ui.colored_label(egui::Color32::KHAKI, "⚠ Please measure white point first.");
+        }
     });
     action
+}
+
+fn render_card<F>(ui: &mut egui::Ui, title: &str, min_height: f32, add_contents: F)
+where
+    F: FnOnce(&mut egui::Ui),
+{
+    let visuals = &ui.ctx().style().visuals;
+    egui::Frame::none()
+        .fill(crate::theme::info_panel_color(visuals))
+        .rounding(12.0)
+        .stroke(egui::Stroke::new(1.0, crate::theme::border_color(visuals)))
+        .inner_margin(egui::Margin::same(16.0))
+        .show(ui, |ui| {
+            ui.set_min_height(min_height);
+            ui.vertical(|ui| {
+                ui.label(egui::RichText::new(title).strong().size(14.0));
+                ui.add_space(8.0);
+                add_contents(ui);
+            });
+        });
 }
 
 fn render_measure(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> CalibrationAction {
@@ -242,7 +353,7 @@ fn render_measure(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> Calibr
             );
         }
 
-        // Draw the color patch - Fullscreen-ish or at least large
+        // Static preview patch (only visible when NOT measuring, since overlay covers it otherwise)
         let size = egui::vec2(300.0, 300.0);
         let (rect, _response) = ui.allocate_at_least(size, egui::Sense::hover());
         ui.painter()
