@@ -17,6 +17,7 @@
 - [Installation and Setup](#installation-and-setup)
 - [Operational Procedures](#operational-procedures)
 - [Technical Specifications](#technical-specifications)
+- [High-Precision Spectral Algorithms](#high-precision-spectral-algorithms)
 - [Architecture](#architecture)
 - [Development and Maintenance](#development-and-maintenance)
 - [License](#license)
@@ -85,6 +86,20 @@ The implementation is derived from the established logic of the **ArgyllCMS** pr
 - **EEPROM Serialization:** Full mapping of hardware-stored linearization polynomials and factory-shipped correction matrices.
 - **Spectral Mapping:** High-fidelity transposition of 128 raw sensor bins to 36 standardized 10nm spectral bands (380nm to 730nm).
 - **Performance:** Zero-cost abstractions ensure minimal overhead during high-frequency spectral sampling.
+- **Reference Accuracy:** Achieves reference-grade white point accuracy (e.g., $L^* > 96$, $a^* \approx 0$, $b^* \approx 0$) on standard tiles.
+
+---
+
+## High-Precision Spectral Algorithms
+
+`spectro-rs` includes a custom digital signal processing (DSP) suite tailored for aging hardware recovery and scientific precision:
+
+- **Hardware-Level Oversampling:** Implements 8x multi-frame averaging to minimize shot noise and electronic jitter, providing a 2.8x SNR improvement.
+- **High Dynamic Range (HDR) Exposure:** Forces high sensor counts (10,500+) and minimum integration time (0.015s) to maximize signal in the low-sensitivity UV and Red spectral tails.
+- **Signal-Gated Dynamic Extrapolation:** Automatically detects the valid sensor band range using a dynamic peak-based threshold (25%), filtering out noisy dark zones.
+- **Stable Anchor Selection:** Advanced "interior-step" anchor logic (e.g., using `first + 1` bands) to avoid unstable LED emission slopes, eliminating false yellow/blue color casts.
+- **Spectral Smoothing:** Integrated 3-point Boxcar filter `[0.25, 0.5, 0.25]` applied post-extrapolation for maximum colorimetric stability and repeatability.
+- **Physics-Based Linearizer:** Corrects sensor non-linearity using a robust dead-zone and saturation-shaping model.
 
 ---
 
