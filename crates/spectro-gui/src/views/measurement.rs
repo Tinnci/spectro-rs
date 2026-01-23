@@ -3,7 +3,6 @@ use spectro_rs::MeasurementMode;
 use std::time::{Duration, Instant};
 
 use crate::app::SpectroApp;
-use crate::components::history::render_history;
 use crate::components::reference::{ReferenceContext, render_reference_window};
 use crate::components::settings::{
     DebugSettingsContext, SettingsContext, render_debug_settings_window, render_settings_window,
@@ -17,10 +16,20 @@ use crate::views::simple::{SimpleViewContext, render_simple_workspace};
 /// Render the main measurement view (Simple/Expert modes)
 pub fn render_measurement_view(app: &mut SpectroApp, ctx: &egui::Context) {
     // === Dynamic Window Size Management ===
-    // In Floating Palette mode, the main window size stays stable.
+    let mut min_width = app.theme_config.layout.window_min_width;
+    let min_height = app.theme_config.layout.window_min_height;
+
+    if app.is_expert_mode {
+        if app.show_history_panel && !app.show_history_detached {
+            min_width += app.theme_config.layout.history_min_width;
+        }
+        if app.inspector.visible && !app.inspector.is_detached {
+            min_width += app.theme_config.layout.inspector_min_width;
+        }
+    }
+
     ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(egui::vec2(
-        app.theme_config.layout.window_min_width,
-        app.theme_config.layout.window_min_height,
+        min_width, min_height,
     )));
 
     // === Handle continuous measurement ===
@@ -267,59 +276,122 @@ pub fn render_measurement_view(app: &mut SpectroApp, ctx: &egui::Context) {
         });
 
     // ========================================================================
-    // Floating Palettes (Windows that can be moved/docked)
+    // Panels & Palettes (Docking System)
     // ========================================================================
 
-    // --- Inspector Palette ---
+    // --- Inspector Panel ---
     if app.is_expert_mode && app.inspector.visible {
-        let mut visible = app.inspector.visible;
-        egui::Window::new(format!("🔍 {}", t!("gui-device-inspector")))
-            .id(egui::Id::new("inspector_palette"))
-            .resizable(true)
-            .collapsible(true)
-            .default_width(320.0)
-            .open(&mut visible)
-            .show(ctx, |ui| {
-                app.inspector.render(
-                    ui,
-                    &crate::inspector::InspectorContext {
-                        device_info: &app.device_info,
-                        is_connected: app.is_connected,
-                        is_calibrated: app.is_calibrated,
-                        selected_mode: app.selected_mode,
-                        last_result: app.last_result.as_ref(),
-                        last_tm30: app.last_tm30.as_ref(),
-                        history: &app.measurement_history,
-                        layout: &app.theme_config.layout,
-                    },
-                );
-            });
-        app.inspector.visible = visible;
+        let render_inspector = |ui: &mut egui::Ui, app: &mut SpectroApp| {
+            app.inspector.render(
+                ui,
+                &crate::inspector::InspectorContext {
+                    device_info: &app.device_info,
+                    is_connected: app.is_connected,
+                    is_calibrated: app.is_calibrated,
+                    selected_mode: app.selected_mode,
+                    last_result: app.last_result.as_ref(),
+                    last_tm30: app.last_tm30.as_ref(),
+                    history: &app.measurement_history,
+                    layout: &app.theme_config.layout,
+                },
+            );
+        };
+
+        if app.inspector.is_detached {
+            // Detached: Render in a separate OS window (Viewport)
+            let viewport_id = egui::ViewportId::from_hash_of("inspector_viewport");
+            ctx.show_viewport_immediate(
+                viewport_id,
+                egui::ViewportBuilder::default()
+                    .with_title(format!("🔍 {}", t!("gui-device-inspector")))
+                    .with_inner_size([360.0, 600.0])
+                    .with_min_inner_size([300.0, 400.0]),
+                |ctx, class| {
+                    if class == egui::ViewportClass::Embedded {
+                        // Fallback if viewports are not supported
+                        let mut visible = true;
+                        egui::Window::new(format!("🔍 {}", t!("gui-device-inspector")))
+                            .open(&mut visible)
+                            .show(ctx, |ui| render_inspector(ui, app));
+                    } else {
+                        // Native Window Content
+                        egui::CentralPanel::default().show(ctx, |ui| {
+                            render_inspector(ui, app);
+                        });
+                        // Handle close request from OS window close button
+                        if ctx.input(|i| i.viewport().close_requested()) {
+                            app.inspector.visible = false;
+                        }
+                    }
+                },
+            );
+        } else {
+            // Docked SidePanel Mode
+            egui::SidePanel::right("inspector_panel")
+                .resizable(true)
+                .default_width(app.theme_config.layout.inspector_default_width)
+                .show(ctx, |ui| {
+                    render_inspector(ui, app);
+                });
+        }
     }
 
-    // --- History Palette ---
+    // --- History Panel ---
     let mut history_action = crate::components::history::HistoryAction::None;
     if app.is_expert_mode && app.show_history_panel {
-        let mut history_visible = app.show_history_panel;
-        egui::Window::new(t!("gui-history-title"))
-            .id(egui::Id::new("history_palette"))
-            .resizable(true)
-            .collapsible(true)
-            .default_width(300.0)
-            .open(&mut history_visible)
-            .show(ctx, |ui| {
-                history_action = render_history(
-                    ui,
-                    &crate::components::history::HistoryContext {
-                        history: &app.measurement_history,
-                        delta_e_tolerance: app.delta_e_tolerance,
-                        layout: &app.theme_config.layout,
-                        is_detached: app.show_history_detached,
-                        selected_index: app.selected_history_index,
-                    },
-                );
-            });
-        app.show_history_panel = history_visible;
+        let render_history_wrapper = |ui: &mut egui::Ui,
+                                      app: &mut SpectroApp|
+         -> crate::components::history::HistoryAction {
+            crate::components::history::render_history(
+                ui,
+                &crate::components::history::HistoryContext {
+                    history: &app.measurement_history,
+                    delta_e_tolerance: app.delta_e_tolerance,
+                    layout: &app.theme_config.layout,
+                    is_detached: app.show_history_detached,
+                    selected_index: app.selected_history_index,
+                },
+            )
+        };
+
+        if app.show_history_detached {
+            // Detached: Render in a separate OS window (Viewport)
+            let viewport_id = egui::ViewportId::from_hash_of("history_viewport");
+            ctx.show_viewport_immediate(
+                viewport_id,
+                egui::ViewportBuilder::default()
+                    .with_title(t!("gui-history-title"))
+                    .with_inner_size([350.0, 500.0])
+                    .with_min_inner_size([300.0, 300.0]),
+                |ctx, class| {
+                    if class == egui::ViewportClass::Embedded {
+                        // Fallback
+                        let mut visible = true;
+                        egui::Window::new(t!("gui-history-title"))
+                            .open(&mut visible)
+                            .show(ctx, |ui| {
+                                history_action = render_history_wrapper(ui, app);
+                            });
+                    } else {
+                        // Native Window Content
+                        egui::CentralPanel::default().show(ctx, |ui| {
+                            history_action = render_history_wrapper(ui, app);
+                        });
+                        if ctx.input(|i| i.viewport().close_requested()) {
+                            app.show_history_panel = false;
+                        }
+                    }
+                },
+            );
+        } else {
+            // Docked SidePanel Mode
+            egui::SidePanel::left("history_panel")
+                .resizable(true)
+                .default_width(300.0)
+                .show(ctx, |ui| {
+                    history_action = render_history_wrapper(ui, app);
+                });
+        }
     }
 
     match history_action {
