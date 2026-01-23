@@ -4,7 +4,8 @@
 
 use dialoguer::{Select, theme::ColorfulTheme};
 use spectro_rs::{
-    MeasurementMode, Result, colorimetry::XYZ, device::DevicePosition, discover, i18n, t,
+    MeasurementMode, Result, colorimetry::XYZ, device::DevicePosition, discover, i18n,
+    spectrum::Colorimetry, t,
 };
 
 fn main() -> Result<()> {

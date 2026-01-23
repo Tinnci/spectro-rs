@@ -1,3 +1,4 @@
+use crate::spectrum::Colorimetry;
 use crate::{Illuminant, Observer};
 
 pub mod curves;
@@ -1083,7 +1084,7 @@ pub mod metrics {
 /// Color appearance and analysis utilities.
 pub mod appearance {
     use super::{Lab, XYZ, illuminant};
-    use crate::spectrum::SpectralData;
+    use crate::spectrum::{Colorimetry, SpectralData};
 
     /// Calculate Metamerism Index between two spectral samples.
     /// Compares how differently the samples appear under a test illuminant

@@ -109,7 +109,9 @@ pub mod transport;
 // ============================================================================
 
 pub use device::{BoxedSpectrometer, DeviceInfo, DevicePosition, DeviceStatus, Spectrometer};
-pub use spectrum::{MeasurementMode as SpectrumMeasurementMode, SpectralData};
+pub use spectrum::{
+    Colorimetry, MeasurementMode as SpectrumMeasurementMode, QualityMetrics, SpectralData,
+};
 pub use transport::{Transport, UsbTransport};
 
 // ============================================================================
