@@ -89,5 +89,25 @@ pub fn render(ui: &mut egui::Ui, ctx: &InspectorContext) {
                     ui.end_row();
                 });
         });
+
+        if !data.spectrum.metadata.is_empty() {
+            ui.collapsing("📡 Advanced DSP Diagnostics", |ui| {
+                ui.add_space(ctx.layout.spacing * 0.5);
+                egui::Grid::new("dsp_meta_grid")
+                    .num_columns(2)
+                    .spacing([20.0, 4.0])
+                    .show(ui, |ui| {
+                        let mut sorted_meta: Vec<_> = data.spectrum.metadata.iter().collect();
+                        sorted_meta.sort_by_key(|(k, _)| *k);
+
+                        for (key, val) in sorted_meta {
+                            let label = key.replace('_', " ").to_uppercase();
+                            ui.label(format!("{}:", label));
+                            ui.label(egui::RichText::new(val).monospace().strong());
+                            ui.end_row();
+                        }
+                    });
+            });
+        }
     }
 }

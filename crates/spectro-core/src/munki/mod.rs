@@ -586,7 +586,11 @@ impl<T: Transport> Spectrometer for Munki<T> {
         };
 
         let (raw, time) = self.measure_spot(lamp, high_gain, None)?;
-        self.process_spectrum(&raw, high_gain, mode, time)
+        let mut result = self.process_spectrum(&raw, high_gain, mode, time)?;
+        result
+            .metadata
+            .insert("oversampling".to_string(), "8x (Hardware)".to_string());
+        Ok(result)
     }
 
     fn supported_modes(&self) -> Vec<MeasurementMode> {

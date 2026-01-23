@@ -321,6 +321,7 @@ mod tests {
             wavelengths,
             values,
             mode: MeasurementMode::Emissive,
+            metadata: std::collections::HashMap::new(),
         };
 
         let metrics = calculate_tm30(&spd);

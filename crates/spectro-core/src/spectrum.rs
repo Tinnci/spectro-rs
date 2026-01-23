@@ -68,6 +68,8 @@ pub struct SpectralData {
     pub values: Vec<f32>,
     /// Measurement mode affects XYZ calculation method
     pub mode: MeasurementMode,
+    /// Diagnostic metadata about the measurement (e.g. exposure time, dsp params)
+    pub metadata: std::collections::HashMap<String, String>,
 }
 
 impl SpectralData {
@@ -80,6 +82,7 @@ impl SpectralData {
             wavelengths: WAVELENGTHS.to_vec(),
             values,
             mode: MeasurementMode::default(),
+            metadata: std::collections::HashMap::new(),
         }
     }
 
@@ -92,6 +95,7 @@ impl SpectralData {
             wavelengths: WAVELENGTHS.to_vec(),
             values,
             mode,
+            metadata: std::collections::HashMap::new(),
         }
     }
 
@@ -282,6 +286,7 @@ impl SpectralData {
                 wavelengths: Vec::new(),
                 values: Vec::new(),
                 mode: self.mode,
+                metadata: std::collections::HashMap::new(),
             };
         }
 
@@ -334,6 +339,7 @@ impl SpectralData {
             wavelengths,
             values: new_values,
             mode: self.mode,
+            metadata: self.metadata.clone(),
         }
     }
 

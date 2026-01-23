@@ -61,6 +61,23 @@ impl SignalProcessor {
             }
         }
 
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert(
+            "integration_time".to_string(),
+            format!("{:.4}s", integration_time_sec),
+        );
+        metadata.insert(
+            "gain".to_string(),
+            if high_gain { "High" } else { "Normal" }.to_string(),
+        );
+        metadata.insert("thermal_drift".to_string(), format!("{:.2} counts", drift));
+
+        if physics_model.is_some() {
+            metadata.insert("dsp_engine".to_string(), "Physics (SRP)".to_string());
+        } else {
+            metadata.insert("dsp_engine".to_string(), "Polynomial".to_string());
+        }
+
         let mut linearized = Vec::with_capacity(128);
         let polys = if high_gain {
             &config.lin_high
@@ -189,6 +206,12 @@ impl SignalProcessor {
             // 2. Set dynamic threshold: only trust data above 25% of the peak
             // This ensures we anchor to the stable center of the blue peak, avoiding unstable slopes.
             let dynamic_threshold = max_white_signal * 0.25;
+            metadata.insert("white_peak".into(), format!("{:.0} cnt", max_white_signal));
+            metadata.insert(
+                "dsp_threshold".into(),
+                format!("{:.0} cnt", dynamic_threshold),
+            );
+
             println!(
                 "DEBUG: Extrapolation Dynamic Threshold = {:.1} (Peak = {:.1})",
                 dynamic_threshold, max_white_signal
@@ -217,13 +240,14 @@ impl SignalProcessor {
             }
 
             if let (Some(first), Some(last)) = (first_valid, last_valid) {
+                metadata.insert("valid_bands".into(), format!("{}-{}", first, last));
                 println!(
                     "DEBUG: Blind Zone Extrapolation: Valid=[{}-{}], R[first]={:.4}",
                     first, last, values[first]
                 );
-                // We don't trust the very first point (first) as it's often on the unstable slope.
                 // Use the next point inside (first + 1) for a more robust anchor.
                 let safe_anchor_idx = (first + 1).min(last);
+                metadata.insert("blue_anchor".into(), format!("Index {}", safe_anchor_idx));
                 let anchor_value = values[safe_anchor_idx];
 
                 // Extrapolate UV/Blue (Left side) - include the 'first' band itself
@@ -300,6 +324,8 @@ impl SignalProcessor {
             println!("===");
         }
 
-        Ok(SpectralData::with_mode(values, mode))
+        let mut data = SpectralData::with_mode(values, mode);
+        data.metadata = metadata;
+        Ok(data)
     }
 }
