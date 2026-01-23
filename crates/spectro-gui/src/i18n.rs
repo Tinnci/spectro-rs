@@ -52,7 +52,17 @@ impl Language {
 pub fn init(lang: Language) {
     match lang {
         Language::Auto => {
-            let requested_languages = DesktopLanguageRequester::requested_languages();
+            let mut requested_languages = DesktopLanguageRequester::requested_languages();
+
+            // Fallback to sys-locale if i18n-embed doesn't find anything
+            // This is more reliable on some platforms (like macOS)
+            if requested_languages.is_empty()
+                && let Some(langid) = sys_locale::get_locale()
+                    .and_then(|locale| locale.parse::<unic_langid::LanguageIdentifier>().ok())
+            {
+                requested_languages.push(langid);
+            }
+
             let refs: Vec<_> = requested_languages.iter().collect();
             let _ = LOADER.load_languages(&Translations, &refs);
         }

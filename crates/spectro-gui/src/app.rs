@@ -92,6 +92,10 @@ impl SpectroApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         // Load theme configuration
         let theme_config = ThemeConfig::load_or_default("spectro_theme.json");
+
+        // Initialize internationalization
+        crate::i18n::init(theme_config.language);
+
         theme_config.apply_to_ctx(&cc.egui_ctx);
 
         let (cmd_tx, cmd_rx) = unbounded();

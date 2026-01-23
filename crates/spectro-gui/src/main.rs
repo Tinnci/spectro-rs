@@ -13,8 +13,6 @@ use eframe::egui;
 use spectro_rs::Result;
 
 fn main() -> Result<()> {
-    // Initialize internationalization with auto-detect
-    i18n::init(i18n::Language::Auto);
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1100.0, 700.0])
