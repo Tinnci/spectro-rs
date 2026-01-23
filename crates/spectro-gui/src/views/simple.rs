@@ -4,11 +4,9 @@ use crate::theme::{
 use eframe::egui;
 use spectro_rs::colorimetry::Lab;
 
-#[allow(clippy::type_complexity)]
 pub struct SimpleViewContext<'a> {
     pub last_result: Option<&'a spectro_rs::spectrum::MeasurementResult>,
-    pub calculate_delta_e: Box<dyn Fn(&Lab) -> Option<f32> + 'a>,
-    pub calculate_delta_e_76: Box<dyn Fn(&Lab) -> Option<f32> + 'a>,
+    pub reference_lab: Option<Lab>,
     pub delta_e_tolerance: f32,
     pub layout: &'a crate::theme::LayoutConfig,
 }
@@ -55,7 +53,8 @@ pub fn render_simple_workspace(ui: &mut egui::Ui, ui_ctx: &SimpleViewContext) {
             ui.add_space(ui_ctx.layout.spacing * 2.0);
 
             // === Pass/Fail Indicator ===
-            if let Some(delta_e) = (ui_ctx.calculate_delta_e)(&lab) {
+            if let Some(ref_lab) = ui_ctx.reference_lab {
+                let delta_e = ref_lab.delta_e_2000(&lab);
                 let passed = delta_e <= ui_ctx.delta_e_tolerance;
                 let color = if passed {
                     success_color(&ui.ctx().style().visuals)
@@ -73,13 +72,12 @@ pub fn render_simple_workspace(ui: &mut egui::Ui, ui_ctx: &SimpleViewContext) {
                         .color(muted_text_color(&ui.ctx().style().visuals)),
                 );
 
-                if let Some(delta_e_76) = (ui_ctx.calculate_delta_e_76)(&lab) {
-                    ui.label(
-                        egui::RichText::new(format!("ΔE*76 = {:.2}", delta_e_76))
-                            .size(14.0)
-                            .color(egui::Color32::DARK_GRAY),
-                    );
-                }
+                let delta_e_76 = ref_lab.delta_e_76(&lab);
+                ui.label(
+                    egui::RichText::new(format!("ΔE*76 = {:.2}", delta_e_76))
+                        .size(14.0)
+                        .color(egui::Color32::DARK_GRAY),
+                );
 
                 ui.add_space(ui_ctx.layout.spacing * 0.5);
                 ui.label(

@@ -1,5 +1,7 @@
 use crate::{Illuminant, Observer};
 
+pub mod curves;
+
 /// CIE 1931 2-degree Standard Observer CMFs (380-780nm, 10nm steps)
 pub const X_BAR_2: [f32; 41] = [
     0.0014, 0.0042, 0.0143, 0.0435, 0.1344, 0.2839, 0.3483, 0.3362, 0.2908, 0.1954, 0.0956, 0.0320,

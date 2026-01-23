@@ -303,6 +303,11 @@ impl ThemeConfig {
     pub fn to_visuals(&self) -> Visuals {
         self.mode.to_visuals()
     }
+
+    /// Get background color adjusted for the current theme
+    pub fn adjusted_bg_color(&self, ctx: &egui::Context) -> Color32 {
+        panel_bg_dark_color(&ctx.style().visuals)
+    }
 }
 
 /// Comprehensive font setup for spectro-gui.
