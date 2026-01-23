@@ -13,6 +13,7 @@ use std::time::Instant;
 
 use crate::backend;
 use crate::calibration::CalibrationWizard;
+use crate::exporters::{self, HistoryExporter};
 use crate::inspector::DeviceInspector;
 use crate::shared::{DeviceCommand, ExtendedDeviceInfo, MeasurementEntry, UIUpdate};
 use crate::t;
@@ -161,6 +162,23 @@ impl SpectroApp {
     // Helper Methods
     // ========================================================================
 
+    fn export_with<T: HistoryExporter>(&self, exporter: T) {
+        if self.measurement_history.is_empty() {
+            return;
+        }
+
+        let file_path = rfd::FileDialog::new()
+            .add_filter(exporter.name(), &exporter.extensions())
+            .set_file_name(exporter.default_filename())
+            .save_file();
+
+        if let Some(path) = file_path
+            && let Err(e) = exporter.export(&self.measurement_history, &path)
+        {
+            eprintln!("Failed to export {}: {}", exporter.name(), e);
+        }
+    }
+
     pub(crate) fn get_current_lab(&self) -> Option<Lab> {
         self.last_result.as_ref().map(|res| res.lab)
     }
@@ -202,52 +220,12 @@ impl SpectroApp {
 
     /// Export the measurement history to a CSV file.
     pub(crate) fn export_history_csv(&self) {
-        if self.measurement_history.is_empty() {
-            return;
-        }
-
-        let file_path = rfd::FileDialog::new()
-            .add_filter("CSV File", &["csv"])
-            .set_file_name("measurements.csv")
-            .save_file();
-
-        if let Some(path) = file_path {
-            let mut csv = String::from("Timestamp,Mode,L*,a*,b*,DeltaE\n");
-            for entry in &self.measurement_history {
-                csv.push_str(&format!(
-                    "{},{:?},{:.4},{:.4},{:.4},{}\n",
-                    entry.timestamp,
-                    entry.mode,
-                    entry.result.lab.l,
-                    entry.result.lab.a,
-                    entry.result.lab.b,
-                    entry.delta_e.map(|e| e.to_string()).unwrap_or_default()
-                ));
-            }
-
-            if let Err(e) = std::fs::write(path, csv) {
-                eprintln!("Failed to write CSV: {}", e);
-            }
-        }
+        self.export_with(exporters::CsvExporter);
     }
 
     /// Export the measurement history to a JSON file.
     pub(crate) fn export_history_json(&self) {
-        if self.measurement_history.is_empty() {
-            return;
-        }
-
-        let file_path = rfd::FileDialog::new()
-            .add_filter("JSON File", &["json"])
-            .set_file_name("measurements.json")
-            .save_file();
-
-        if let Some(path) = file_path
-            && let Ok(json) = serde_json::to_string_pretty(&self.measurement_history)
-            && let Err(e) = std::fs::write(path, json)
-        {
-            eprintln!("Failed to write JSON: {}", e);
-        }
+        self.export_with(exporters::JsonExporter);
     }
 
     // NOTE: render_device_dial and render_calibration_wizard have been
@@ -255,65 +233,7 @@ impl SpectroApp {
 
     /// Export the measurement history to a CGATS (.ti3) file.
     pub(crate) fn export_history_cgats(&self) {
-        if self.measurement_history.is_empty() {
-            return;
-        }
-
-        let file_path = rfd::FileDialog::new()
-            .add_filter("CGATS File", &["ti3", "txt"])
-            .set_file_name("measurements.ti3")
-            .save_file();
-
-        if let Some(path) = file_path {
-            let mut cgats = String::new();
-            cgats.push_str("CTI3\n\n");
-            cgats.push_str("DESCRIPTOR \"Argyll Device Measurement data\"\n");
-            cgats.push_str("ORIGINATOR \"spectro-rs\"\n");
-            cgats.push_str(&format!(
-                "CREATED \"{}\"\n\n",
-                chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
-            ));
-
-            // Define fields: ID, Lab, XYZ, and Spectral data
-            cgats.push_str("NUMBER_OF_FIELDS 47\n");
-            cgats.push_str("BEGIN_DATA_FORMAT\n");
-            cgats.push_str("SAMPLE_ID SAMPLE_NAME LAB_L LAB_A LAB_B XYZ_X XYZ_Y XYZ_Z ");
-            for wl in (380..=780).step_by(10) {
-                cgats.push_str(&format!("SPEC_{} ", wl));
-            }
-            cgats.push_str("\nEND_DATA_FORMAT\n\n");
-
-            cgats.push_str(&format!(
-                "NUMBER_OF_SETS {}\n",
-                self.measurement_history.len()
-            ));
-            cgats.push_str("BEGIN_DATA\n");
-
-            for (i, entry) in self.measurement_history.iter().enumerate() {
-                cgats.push_str(&format!(
-                    "{} \"{}\" {:.4} {:.4} {:.4} {:.4} {:.4} {:.4} ",
-                    i + 1,
-                    entry.timestamp,
-                    entry.result.lab.l,
-                    entry.result.lab.a,
-                    entry.result.lab.b,
-                    entry.result.xyz.x,
-                    entry.result.xyz.y,
-                    entry.result.xyz.z
-                ));
-
-                for val in &entry.result.spectrum.values {
-                    cgats.push_str(&format!("{:.6} ", val));
-                }
-                cgats.push('\n');
-            }
-
-            cgats.push_str("END_DATA\n");
-
-            if let Err(e) = std::fs::write(path, cgats) {
-                eprintln!("Failed to write CGATS: {}", e);
-            }
-        }
+        self.export_with(exporters::CgatsExporter);
     }
 }
 
