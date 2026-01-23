@@ -109,9 +109,7 @@ pub mod transport;
 // ============================================================================
 
 pub use device::{BoxedSpectrometer, DeviceInfo, DevicePosition, DeviceStatus, Spectrometer};
-pub use spectrum::{
-    Colorimetry, MeasurementMode as SpectrumMeasurementMode, QualityMetrics, SpectralData,
-};
+pub use spectrum::{Colorimetry, QualityMetrics, SpectralData};
 pub use transport::{Transport, UsbTransport};
 
 // ============================================================================
@@ -119,10 +117,11 @@ pub use transport::{Transport, UsbTransport};
 // ============================================================================
 
 /// Specifies the type of measurement to perform.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum MeasurementMode {
     /// Reflective measurement (paper, prints, materials).
     /// Requires prior calibration with white tile.
+    #[default]
     Reflective,
 
     /// Emissive measurement (displays, monitors).

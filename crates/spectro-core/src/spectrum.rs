@@ -1,20 +1,6 @@
 use crate::WAVELENGTHS;
 use crate::colorimetry::{X_BAR_2, X_BAR_10, XYZ, Y_BAR_2, Y_BAR_10, Z_BAR_2, Z_BAR_10, weighting};
-use crate::{Illuminant, Observer};
-
-/// Measurement mode determines the calculation method for XYZ conversion.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-pub enum MeasurementMode {
-    /// Reflective measurement (objects like paper, color patches)
-    /// Uses ASTM E308 weighting factors which include D65 SPD
-    #[default]
-    Reflective,
-    /// Emissive measurement (light sources like displays, lamps)
-    /// Uses direct CMF integration
-    Emissive,
-    /// Ambient light measurement (same as Emissive but typically with cosine corrector)
-    Ambient,
-}
+use crate::{Illuminant, MeasurementMode, Observer};
 
 /// A consolidated result object containing all standard colorimetric values.
 /// This enforces Single Source of Truth by ensuring that derived values (XYZ, Lab, RGB)
@@ -386,9 +372,26 @@ impl SpectralData {
         } else {
             self.to_xyz_ext(Illuminant::D65, observer)
         };
+
+        // Debug output for diagnosing reflective mode issues
+        if self.mode == MeasurementMode::Reflective {
+            println!("\n=== Reflective Measurement ===");
+            println!(
+                "First 5 spectral values: [{:.4}, {:.4}, {:.4}, {:.4}, {:.4}]",
+                self.values[0], self.values[1], self.values[2], self.values[3], self.values[4]
+            );
+            println!("XYZ: X={:.4}, Y={:.4}, Z={:.4}", xyz.x, xyz.y, xyz.z);
+        }
+
         let wp = target_illuminant.get_white_point(observer);
         let lab = if self.mode == MeasurementMode::Reflective {
-            xyz.to_lab(wp)
+            let lab_result = xyz.to_lab(wp);
+            println!(
+                "Lab: L*={:.2}, a*={:.2}, b*={:.2}",
+                lab_result.l, lab_result.a, lab_result.b
+            );
+            println!("===");
+            lab_result
         } else {
             let adapted_xyz = crate::colorimetry::chromatic_adaptation::bradford_adapt(
                 xyz,
@@ -397,14 +400,35 @@ impl SpectralData {
             );
             adapted_xyz.to_lab(wp)
         };
+
+        // Bradford 适应和 sRGB 转换需要归一化的 XYZ（Y=1 标准）
+        // 但 Lab 计算需要 Y=100 标准，所以我们在这里临时归一化
+        let xyz_normalized = XYZ {
+            x: xyz.x / 100.0,
+            y: xyz.y / 100.0,
+            z: xyz.z / 100.0,
+        };
+
+        let wp_normalized = XYZ {
+            x: wp.x / 100.0,
+            y: wp.y / 100.0,
+            z: wp.z / 100.0,
+        };
+
+        let d65_normalized = XYZ {
+            x: 0.95047,
+            y: 1.0,
+            z: 1.08883,
+        };
+
         let srgb_xyz = if self.mode == MeasurementMode::Reflective {
             crate::colorimetry::chromatic_adaptation::bradford_adapt(
-                xyz,
-                wp,
-                Illuminant::D65.get_white_point(observer),
+                xyz_normalized,
+                wp_normalized,
+                d65_normalized,
             )
         } else {
-            xyz
+            xyz_normalized
         };
         let (r, g, b) = srgb_xyz.to_srgb();
         let rgb_float = (r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0);

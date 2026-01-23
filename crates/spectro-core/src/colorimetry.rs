@@ -80,84 +80,85 @@ pub mod illuminant {
 
     // ==================== 2-DEGREE OBSERVER ====================
     /// D50 (Horizon Light, Print Industry - 2°)
+    /// Standard: Y=100 for perfect reflecting diffuser
     pub const D50: XYZ = XYZ {
-        x: 0.96422,
-        y: 1.0,
-        z: 0.82521,
+        x: 96.422,
+        y: 100.0,
+        z: 82.521,
     };
     /// D55 (Mid-Morning Daylight - 2°)
     pub const D55: XYZ = XYZ {
-        x: 0.95682,
-        y: 1.0,
-        z: 0.92149,
+        x: 95.682,
+        y: 100.0,
+        z: 92.149,
     };
     /// D65 (Noon Daylight, sRGB Standard - 2°)
     pub const D65: XYZ = XYZ {
-        x: 0.95047,
-        y: 1.0,
-        z: 1.08883,
+        x: 95.047,
+        y: 100.0,
+        z: 108.883,
     };
     /// D75 (North Sky Daylight - 2°)
     pub const D75: XYZ = XYZ {
-        x: 0.94972,
-        y: 1.0,
-        z: 1.22638,
+        x: 94.972,
+        y: 100.0,
+        z: 122.638,
     };
     /// Illuminant A (Tungsten 2856K - 2°)
     pub const A: XYZ = XYZ {
-        x: 1.09850,
-        y: 1.0,
-        z: 0.35585,
+        x: 109.850,
+        y: 100.0,
+        z: 35.585,
     };
     /// F2 (Cool White Fluorescent - 2°)
     pub const F2: XYZ = XYZ {
-        x: 0.99186,
-        y: 1.0,
-        z: 0.67393,
+        x: 99.186,
+        y: 100.0,
+        z: 67.393,
     };
     /// F7 (Daylight Fluorescent - 2°)
     pub const F7: XYZ = XYZ {
-        x: 0.95041,
-        y: 1.0,
-        z: 1.08747,
+        x: 95.041,
+        y: 100.0,
+        z: 108.747,
     };
     /// F11 (TL84 Narrow Band - 2°)
     pub const F11: XYZ = XYZ {
-        x: 1.00962,
-        y: 1.0,
-        z: 0.64350,
+        x: 100.962,
+        y: 100.0,
+        z: 64.350,
     };
 
     // ==================== 10-DEGREE OBSERVER ====================
     /// D50 (10-degree observer)
     pub const D50_10: XYZ = XYZ {
-        x: 0.96720,
-        y: 1.0,
-        z: 0.81427,
+        x: 96.720,
+        y: 100.0,
+        z: 81.427,
     };
     /// D55 (10-degree observer)
     pub const D55_10: XYZ = XYZ {
-        x: 0.95799,
-        y: 1.0,
-        z: 0.90926,
+        x: 95.799,
+        y: 100.0,
+        z: 90.926,
     };
     /// D65 (10-degree observer)
     pub const D65_10: XYZ = XYZ {
-        x: 0.94811,
-        y: 1.0,
-        z: 1.07304,
+        x: 94.811,
+        y: 100.0,
+        z: 107.304,
     };
     /// D75 (10-degree observer)
     pub const D75_10: XYZ = XYZ {
-        x: 0.94416,
-        y: 1.0,
-        z: 1.20641,
+        x: 94.416,
+        y: 100.0,
+        z: 120.641,
     };
     /// Illuminant A (10-degree observer)
     pub const A_10: XYZ = XYZ {
-        x: 1.11144,
-        y: 1.0,
-        z: 0.35200,
+        x: 111.144,
+        y: 100.0,
+        z: 35.200,
     };
 
     /// CIE 2018 LED Series Illuminants (2-degree).
@@ -166,27 +167,27 @@ pub mod illuminant {
         use super::super::XYZ;
         /// LED-B1: Typical Blue-pumped white LED (2733K)
         pub const B1: XYZ = XYZ {
-            x: 1.0967,
-            y: 1.0,
-            z: 0.3533,
+            x: 109.67,
+            y: 100.0,
+            z: 35.33,
         };
         /// LED-B3: Standard white LED (4103K)
         pub const B3: XYZ = XYZ {
-            x: 1.0031,
-            y: 1.0,
-            z: 0.5361,
+            x: 100.31,
+            y: 100.0,
+            z: 53.61,
         };
         /// LED-B5: High CRI white LED (6598K)
         pub const B5: XYZ = XYZ {
-            x: 0.9482,
-            y: 1.0,
-            z: 1.0642,
+            x: 94.82,
+            y: 100.0,
+            z: 106.42,
         };
         /// LED-BH1: Hybrid warm LED (2851K)
         pub const BH1: XYZ = XYZ {
-            x: 1.0824,
-            y: 1.0,
-            z: 0.3592,
+            x: 108.24,
+            y: 100.0,
+            z: 35.92,
         };
     }
 

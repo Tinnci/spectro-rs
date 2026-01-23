@@ -220,6 +220,10 @@ impl eframe::App for SpectroApp {
                     self.is_busy = false;
                 }
                 UIUpdate::Error(err) => {
+                    // Critical Update: Forward specific calibration errors to the wizard UI
+                    if self.calibration_wizard.state.show {
+                        self.calibration_wizard.on_calibration_error(err.clone());
+                    }
                     self.status_msg = err;
                     self.is_busy = false;
                 }

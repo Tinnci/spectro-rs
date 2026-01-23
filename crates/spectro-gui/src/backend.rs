@@ -54,10 +54,8 @@ pub fn spawn_backend_thread(cmd_rx: Receiver<DeviceCommand>, update_tx: Sender<U
                                     .send(UIUpdate::Status(t!("gui-status-calibration-ok")))
                                     .ok();
                             }
-                            Err(_e) => {
-                                update_tx
-                                    .send(UIUpdate::Error(t!("gui-error-calibration-failed")))
-                                    .ok();
+                            Err(e) => {
+                                update_tx.send(UIUpdate::Error(e.to_string())).ok();
                             }
                         }
                     } else {
@@ -92,9 +90,7 @@ pub fn spawn_backend_thread(cmd_rx: Receiver<DeviceCommand>, update_tx: Sender<U
                                     device = None;
                                     update_tx.send(UIUpdate::Disconnected).ok();
                                 }
-                                update_tx
-                                    .send(UIUpdate::Error(t!("gui-error-measurement-failed")))
-                                    .ok();
+                                update_tx.send(UIUpdate::Error(err_str)).ok();
                             }
                         }
                     } else {

@@ -303,7 +303,7 @@ fn calculate_polygon_area(a: &[f32; 16], b: &[f32; 16]) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::spectrum::MeasurementMode;
+    use crate::MeasurementMode;
 
     #[test]
     fn test_tm30_d65() {

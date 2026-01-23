@@ -531,16 +531,13 @@ pub fn render_measurement_view(app: &mut SpectroApp, ctx: &egui::Context) {
     );
 
     // Mode Guidance reminder (if we're busy measuring and not in the wizard)
-    if app.is_busy && !app.calibration_wizard.show && !app.status_msg.contains("Calibrate") {
+    // Mode Guidance reminder (if we're busy measuring and not in the wizard)
+    if app.is_busy && !app.calibration_wizard.state.show && !app.status_msg.contains("Calibrate") {
         let highlight = match app.selected_mode {
             spectro_rs::MeasurementMode::Reflective => "REFLECTIVE",
             spectro_rs::MeasurementMode::Emissive => "EMISSIVE",
             spectro_rs::MeasurementMode::Ambient => "AMBIENT",
         };
-        crate::calibration::CalibrationWizard::render_dial_check(
-            ctx,
-            highlight,
-            &app.theme_config.layout,
-        );
+        crate::calibration::render_dial_check(ctx, highlight, &app.theme_config.layout);
     }
 }

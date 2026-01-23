@@ -141,8 +141,8 @@ pub fn render_simple_workspace(ui: &mut egui::Ui, ui_ctx: &SimpleViewContext) {
                     });
             });
 
-            if res.spectrum.mode == spectro_rs::spectrum::MeasurementMode::Emissive
-                || res.spectrum.mode == spectro_rs::spectrum::MeasurementMode::Ambient
+            if res.spectrum.mode == spectro_rs::MeasurementMode::Emissive
+                || res.spectrum.mode == spectro_rs::MeasurementMode::Ambient
             {
                 ui.add_space(ui_ctx.layout.spacing * 2.0);
                 ui.horizontal(|ui| {
@@ -153,13 +153,12 @@ pub fn render_simple_workspace(ui: &mut egui::Ui, ui_ctx: &SimpleViewContext) {
                         .inner_margin(egui::Margin::same(12.0))
                         .show(ui, |ui| {
                             ui.vertical(|ui| {
-                                let (label, unit) = if res.spectrum.mode
-                                    == spectro_rs::spectrum::MeasurementMode::Emissive
-                                {
-                                    ("Luminance", "cd/m²")
-                                } else {
-                                    ("Illuminance", "Lux")
-                                };
+                                let (label, unit) =
+                                    if res.spectrum.mode == spectro_rs::MeasurementMode::Emissive {
+                                        ("Luminance", "cd/m²")
+                                    } else {
+                                        ("Illuminance", "Lux")
+                                    };
                                 ui.label(
                                     egui::RichText::new(label)
                                         .size(12.0)

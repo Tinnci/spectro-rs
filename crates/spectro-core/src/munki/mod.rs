@@ -289,10 +289,30 @@ impl<T: Transport> Munki<T> {
 
         // Dark frame calibration (lamp off)
         let raw_dark = self.measure_spot(false, false)?;
+        // Check dark current quality
+        let dark_avg: f32 = raw_dark.iter().map(|&x| x as f32).sum::<f32>() / raw_dark.len() as f32;
+        let dark_max = raw_dark.iter().max().unwrap_or(&0);
+        println!("\n=== Calibration Diagnostics ===");
+        println!(
+            "Dark Current stats: Avg={:.1}, Max={} (Should be < 1000 typically)",
+            dark_avg, dark_max
+        );
+
         self.dark_ref = Some(raw_dark);
 
         // White tile calibration (lamp on)
         let raw_white = self.measure_spot(true, false)?;
+        // Check signal strength
+        let white_avg: f32 =
+            raw_white.iter().map(|&x| x as f32).sum::<f32>() / raw_white.len() as f32;
+        let white_max = raw_white.iter().max().unwrap_or(&0);
+        println!(
+            "White Signal stats: Avg={:.1}, Max={} (Should be > 10000 typically)",
+            white_avg, white_max
+        );
+        if *white_max < 1000 {
+            println!("WARNING: Signal too low! Is the shutter open?");
+        }
 
         // Process without white calibration factors
         let old_factors = self.white_cal_factors.take();
@@ -300,16 +320,49 @@ impl<T: Transport> Munki<T> {
         self.white_cal_factors = old_factors;
 
         // Compute calibration factors
-        let mut factors = Vec::with_capacity(36);
-        for i in 0..36 {
-            let measured = spec.values[i];
-            let reference = self.config.white_ref[i];
-            factors.push(if measured > 1e-6 {
-                reference / measured
-            } else {
-                1.0
-            });
+        // 1. Calculation: Generate all factors in strict order (0..36)
+        // This prevents any ordering issues caused by split loops for logging.
+        let factors: Vec<f32> = spec
+            .values
+            .iter()
+            .zip(self.config.white_ref.iter())
+            .map(|(&measured, &reference)| {
+                if measured > 1e-6 {
+                    reference / measured
+                } else {
+                    1.0
+                }
+            })
+            .collect();
+
+        // 2. Logging: Diagnostic output from the computed data
+        println!("\n=== White Calibration Data (Safe Mode) ===");
+
+        let print_band = |idx: usize, label: &str| {
+            if idx < factors.len() {
+                println!(
+                    "  [{:02}] {:<6} Measured: {:.4e}, Ref: {:.4e}, Factor: {:.4e}",
+                    idx, label, spec.values[idx], self.config.white_ref[idx], factors[idx]
+                );
+            }
+        };
+
+        println!("--- Low Range (UV/Blue) ---");
+        for i in 0..5 {
+            print_band(i, "380-420");
         }
+
+        println!("--- Mid Range (Green/Yellow) ---");
+        for i in 15..20 {
+            print_band(i, "530-570");
+        }
+
+        println!("--- High Range (Red) ---");
+        for i in 31..36 {
+            print_band(i, "690-730");
+        }
+
+        println!("===");
 
         self.white_cal_factors = Some(factors);
 

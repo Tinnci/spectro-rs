@@ -107,6 +107,53 @@ impl SignalProcessor {
             values.push(sum);
         }
 
-        Ok(SpectralData::new(values))
+        // Debug output to diagnose spectral processing
+        if mode == MeasurementMode::Reflective {
+            println!("\n=== DSP Processing (Reflective Mode) ===");
+            println!(
+                "Spectral reconstruction completed: {} wavelength bands",
+                values.len()
+            );
+            println!(
+                "First 5 raw values: [{:.8e}, {:.8e}, {:.8e}, {:.8e}, {:.8e}]",
+                values.first().unwrap_or(&0.0),
+                values.get(1).unwrap_or(&0.0),
+                values.get(2).unwrap_or(&0.0),
+                values.get(3).unwrap_or(&0.0),
+                values.get(4).unwrap_or(&0.0)
+            );
+            println!(
+                "Middle 5 (idx 15-19): [{:.8e}, {:.8e}, {:.8e}, {:.8e}, {:.8e}]",
+                values.get(15).unwrap_or(&0.0),
+                values.get(16).unwrap_or(&0.0),
+                values.get(17).unwrap_or(&0.0),
+                values.get(18).unwrap_or(&0.0),
+                values.get(19).unwrap_or(&0.0)
+            );
+            println!(
+                "Last  5 (idx 31-35): [{:.8e}, {:.8e}, {:.8e}, {:.8e}, {:.8e}]",
+                values.get(31).unwrap_or(&0.0),
+                values.get(32).unwrap_or(&0.0),
+                values.get(33).unwrap_or(&0.0),
+                values.get(34).unwrap_or(&0.0),
+                values.get(35).unwrap_or(&0.0)
+            );
+            if let Some(factors) = white_factors {
+                println!("White calibration applied: YES");
+                println!(
+                    "First 5 factors: [{:.8e}, {:.8e}, {:.8e}, {:.8e}, {:.8e}]",
+                    factors.first().unwrap_or(&1.0),
+                    factors.get(1).unwrap_or(&1.0),
+                    factors.get(2).unwrap_or(&1.0),
+                    factors.get(3).unwrap_or(&1.0),
+                    factors.get(4).unwrap_or(&1.0)
+                );
+            } else {
+                println!("White calibration applied: NO");
+            }
+            println!("===");
+        }
+
+        Ok(SpectralData::with_mode(values, mode))
     }
 }

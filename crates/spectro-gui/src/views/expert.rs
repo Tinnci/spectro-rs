@@ -120,8 +120,8 @@ pub fn render_expert_workspace(ui: &mut egui::Ui, ui_ctx: &ExpertViewContext) {
         if res.cri.is_some() {
             total_cards += 1;
         }
-        if res.spectrum.mode == spectro_rs::spectrum::MeasurementMode::Emissive
-            || res.spectrum.mode == spectro_rs::spectrum::MeasurementMode::Ambient
+        if res.spectrum.mode == spectro_rs::MeasurementMode::Emissive
+            || res.spectrum.mode == spectro_rs::MeasurementMode::Ambient
         {
             total_cards += 1;
         }
@@ -152,9 +152,7 @@ pub fn render_expert_workspace(ui: &mut egui::Ui, ui_ctx: &ExpertViewContext) {
                                     ];
 
                                     // For emissive, Lab isn't the primary reference, so we can add more context if needed
-                                    if res.spectrum.mode
-                                        == spectro_rs::spectrum::MeasurementMode::Emissive
-                                    {
+                                    if res.spectrum.mode == spectro_rs::MeasurementMode::Emissive {
                                         rows.push(("Chroma", format!("{:.1}", chroma)));
                                     }
 
@@ -173,17 +171,15 @@ pub fn render_expert_workspace(ui: &mut egui::Ui, ui_ctx: &ExpertViewContext) {
                             );
                         }
                         1 => {
-                            if res.spectrum.mode == spectro_rs::spectrum::MeasurementMode::Emissive
-                                || res.spectrum.mode
-                                    == spectro_rs::spectrum::MeasurementMode::Ambient
+                            if res.spectrum.mode == spectro_rs::MeasurementMode::Emissive
+                                || res.spectrum.mode == spectro_rs::MeasurementMode::Ambient
                             {
-                                let (title, unit) = if res.spectrum.mode
-                                    == spectro_rs::spectrum::MeasurementMode::Emissive
-                                {
-                                    (t!("gui-bento-luminance"), "cd/m²")
-                                } else {
-                                    (t!("gui-bento-illuminance"), "Lux")
-                                };
+                                let (title, unit) =
+                                    if res.spectrum.mode == spectro_rs::MeasurementMode::Emissive {
+                                        (t!("gui-bento-luminance"), "cd/m²")
+                                    } else {
+                                        (t!("gui-bento-illuminance"), "Lux")
+                                    };
 
                                 render_bento_item(
                                     ui,
@@ -248,9 +244,7 @@ pub fn render_expert_workspace(ui: &mut egui::Ui, ui_ctx: &ExpertViewContext) {
                                         (t!("gui-bento-hue"), format!("{:.1}°", hue)),
                                         (t!("gui-bento-cct"), format!("{:.0}K", cct)),
                                     ];
-                                    if res.spectrum.mode
-                                        == spectro_rs::spectrum::MeasurementMode::Emissive
-                                    {
+                                    if res.spectrum.mode == spectro_rs::MeasurementMode::Emissive {
                                         // For emissive, du'v' is often more useful than Hue
                                         // (Placeholder for now)
                                     }
