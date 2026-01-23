@@ -131,4 +131,4 @@ This project is licensed under the **[GNU General Public License v3.0](https://w
 
 ## Maintainers
 
-Current project maintenance is handled by the core development team. For bug reports or feature expansion requests regarding new spectrophotometer hardware, please utilize the GitHub Issue tracker.
+Current project maintenance is handled by me. For bug reports or feature expansion requests regarding new spectrophotometer hardware, please utilize the GitHub Issue tracker.

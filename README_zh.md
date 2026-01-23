@@ -131,4 +131,4 @@ pre-commit install
 
 ## 维护者
 
-当前由核心开发团队进行维护。如需报告 Bug 或提交针对新硬件的支持申请，请查阅 GitHub Issue 追踪系统。
+当前由我进行维护。如需报告 Bug 或提交针对新硬件的支持申请，请查阅 GitHub Issue 追踪系统。
