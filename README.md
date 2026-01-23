@@ -25,7 +25,7 @@
 
 ## Core Functionality
 
-**Cross-platform Support:** Full hardware abstraction layer for Windows, macOS, and Linux via standard USB communication protocols.
+**Cross-platform Support:** Full hardware abstraction layer for Windows, macOS, and Linux via standard USB communication protocols. Includes **Native CJK font support** by dynamically loading system fonts (PingFang, YaHei, Noto Sans CJK).
 
 **Multimodal Measurement Capabilities:**
 - **Reflective Mode:** Implements automated dark-current and white-tile reference calibration for surface colorimetry.
