@@ -295,8 +295,8 @@ impl ThemeConfig {
             style.spacing.window_margin = egui::Margin::same(self.layout.spacing);
         });
 
-        // Load comprehensive emoji font to eliminate tofu
-        load_comprehensive_emoji_fonts(ctx);
+        // Initialize advanced font system (CJK + Emoji Fallback)
+        setup_custom_fonts(ctx);
     }
 
     /// Get current visuals
@@ -305,8 +305,9 @@ impl ThemeConfig {
     }
 }
 
-/// Load comprehensive emoji font to eliminate tofu (□) characters
-fn load_comprehensive_emoji_fonts(ctx: &egui::Context) {
+/// Comprehensive font setup for spectro-gui.
+/// Implements a fallback chain: Default UI -> System CJK -> Emoji
+fn setup_custom_fonts(ctx: &egui::Context) {
     use std::sync::atomic::{AtomicBool, Ordering};
 
     // Ensure fonts are only loaded once
@@ -318,26 +319,84 @@ fn load_comprehensive_emoji_fonts(ctx: &egui::Context) {
 
     let mut fonts = egui::FontDefinitions::default();
 
-    // Embed the complete Noto Emoji font
+    // 1. Attempt to load system CJK font to avoid massive binary size
+    if let Some(cjk_data) = find_system_cjk_font() {
+        fonts.font_data.insert(
+            "System-CJK".to_owned(),
+            egui::FontData::from_owned(cjk_data),
+        );
+
+        // Insert CJK font after default UI fonts but before Emoji
+        fonts
+            .families
+            .entry(egui::FontFamily::Proportional)
+            .or_default()
+            .insert(1, "System-CJK".to_owned());
+
+        fonts
+            .families
+            .entry(egui::FontFamily::Monospace)
+            .or_default()
+            .insert(1, "System-CJK".to_owned());
+    }
+
+    // 2. Embed the complete Noto Emoji font (Essential for indicators/symbols)
     fonts.font_data.insert(
         "NotoEmoji-Complete".to_owned(),
         egui::FontData::from_static(include_bytes!("../assets/fonts/NotoEmoji-Regular.ttf")),
     );
 
-    // Insert emoji font at high priority in all font families (after default UI fonts)
+    // Append Emoji to the end of the chain
     fonts
         .families
         .entry(egui::FontFamily::Proportional)
         .or_default()
-        .insert(1, "NotoEmoji-Complete".to_owned());
+        .push("NotoEmoji-Complete".to_owned());
 
     fonts
         .families
         .entry(egui::FontFamily::Monospace)
         .or_default()
-        .insert(1, "NotoEmoji-Complete".to_owned());
+        .push("NotoEmoji-Complete".to_owned());
 
     ctx.set_fonts(fonts);
+}
+
+/// Scans standard system paths for high-quality CJK fonts.
+fn find_system_cjk_font() -> Option<Vec<u8>> {
+    let candidates = if cfg!(target_os = "macos") {
+        vec![
+            "/System/Library/Fonts/PingFang.ttc",
+            "/Library/Fonts/Arial Unicode.ttf",
+            "/System/Library/Fonts/STHeiti Light.ttc",
+        ]
+    } else if cfg!(target_os = "windows") {
+        vec![
+            "C:\\Windows\\Fonts\\msyh.ttc", // Microsoft YaHei
+            "C:\\Windows\\Fonts\\msyh.ttf",
+            "C:\\Windows\\Fonts\\simsun.ttc", // SimSun
+            "C:\\Windows\\Fonts\\malgun.ttf", // Malgun Gothic (Korean)
+        ]
+    } else {
+        // Linux: Common Noto and WenQuanYi locations
+        vec![
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/opentype/noto-cjk/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/wqy-microhei/wqy-microhei.ttc",
+            "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+        ]
+    };
+
+    for path in candidates {
+        if let Ok(data) = std::fs::read(path) {
+            #[cfg(debug_assertions)]
+            println!("Successfully loaded system CJK font from: {}", path);
+            return Some(data);
+        }
+    }
+
+    None
 }
 
 #[cfg(test)]

@@ -15,7 +15,9 @@ use crate::backend;
 use crate::calibration::CalibrationWizard;
 use crate::components::history::{HistoryAction, HistoryContext, render_history};
 use crate::components::reference::{ReferenceContext, render_reference_window};
-use crate::components::settings::{SettingsContext, render_settings_window};
+use crate::components::settings::{
+    DebugSettingsContext, SettingsContext, render_debug_settings_window, render_settings_window,
+};
 use crate::inspector::{DeviceInspector, InspectorContext};
 use crate::shared::{DeviceCommand, ExtendedDeviceInfo, MeasurementEntry, UIUpdate};
 use crate::t;
@@ -60,6 +62,7 @@ pub struct SpectroApp {
     is_expert_mode: bool,
     show_reference_input: bool,
     show_settings: bool,
+    show_debug_settings: bool,
     show_history_panel: bool,
     show_history_detached: bool,
     inspector: DeviceInspector,
@@ -120,6 +123,7 @@ impl SpectroApp {
             is_expert_mode: false,
             show_reference_input: false,
             show_settings: false,
+            show_debug_settings: false,
             show_history_panel: true,
             show_history_detached: false,
             inspector: DeviceInspector::new(),
@@ -601,8 +605,19 @@ impl eframe::App for SpectroApp {
             ctx,
             &mut SettingsContext {
                 show: &mut self.show_settings,
+                show_debug: &mut self.show_debug_settings,
                 selected_illuminant: &mut self.selected_illuminant,
                 selected_observer: &mut self.selected_observer,
+                theme_config: &mut self.theme_config,
+                dirty: &mut self.theme_dirty,
+            },
+        );
+
+        // === Debug Settings Window ===
+        render_debug_settings_window(
+            ctx,
+            &mut DebugSettingsContext {
+                show: &mut self.show_debug_settings,
                 theme_config: &mut self.theme_config,
                 dirty: &mut self.theme_dirty,
             },
