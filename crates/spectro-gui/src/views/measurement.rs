@@ -17,20 +17,10 @@ use crate::views::simple::{SimpleViewContext, render_simple_workspace};
 /// Render the main measurement view (Simple/Expert modes)
 pub fn render_measurement_view(app: &mut SpectroApp, ctx: &egui::Context) {
     // === Dynamic Window Size Management ===
-    let mut min_width = app.theme_config.layout.window_min_width;
-    let min_height = app.theme_config.layout.window_min_height;
-
-    if app.is_expert_mode {
-        if app.show_history_panel && !app.show_history_detached {
-            min_width += app.theme_config.layout.history_min_width;
-        }
-        if app.inspector.visible && !app.inspector.is_detached {
-            min_width += app.theme_config.layout.inspector_min_width;
-        }
-    }
-
+    // In Floating Palette mode, the main window size stays stable.
     ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(egui::vec2(
-        min_width, min_height,
+        app.theme_config.layout.window_min_width,
+        app.theme_config.layout.window_min_height,
     )));
 
     // === Handle continuous measurement ===
@@ -276,13 +266,20 @@ pub fn render_measurement_view(app: &mut SpectroApp, ctx: &egui::Context) {
             });
         });
 
-    // === Inspector Panel ===
+    // ========================================================================
+    // Floating Palettes (Windows that can be moved/docked)
+    // ========================================================================
+
+    // --- Inspector Palette ---
     if app.is_expert_mode && app.inspector.visible {
-        let ctx_clone = ctx.clone();
-        egui::SidePanel::right("inspector_panel")
+        let mut visible = app.inspector.visible;
+        egui::Window::new(format!("🔍 {}", t!("gui-device-inspector")))
+            .id(egui::Id::new("inspector_palette"))
             .resizable(true)
-            .default_width(app.theme_config.layout.inspector_default_width)
-            .show(&ctx_clone, |ui| {
+            .collapsible(true)
+            .default_width(320.0)
+            .open(&mut visible)
+            .show(ctx, |ui| {
                 app.inspector.render(
                     ui,
                     &crate::inspector::InspectorContext {
@@ -297,16 +294,20 @@ pub fn render_measurement_view(app: &mut SpectroApp, ctx: &egui::Context) {
                     },
                 );
             });
+        app.inspector.visible = visible;
     }
 
-    // === History Panel ===
+    // --- History Palette ---
     let mut history_action = crate::components::history::HistoryAction::None;
     if app.is_expert_mode && app.show_history_panel {
-        let ctx_clone = ctx.clone();
-        egui::SidePanel::left("history_panel")
+        let mut history_visible = app.show_history_panel;
+        egui::Window::new(t!("gui-history-title"))
+            .id(egui::Id::new("history_palette"))
             .resizable(true)
-            .default_width(app.theme_config.layout.history_default_width)
-            .show(&ctx_clone, |ui| {
+            .collapsible(true)
+            .default_width(300.0)
+            .open(&mut history_visible)
+            .show(ctx, |ui| {
                 history_action = render_history(
                     ui,
                     &crate::components::history::HistoryContext {
@@ -318,6 +319,7 @@ pub fn render_measurement_view(app: &mut SpectroApp, ctx: &egui::Context) {
                     },
                 );
             });
+        app.show_history_panel = history_visible;
     }
 
     match history_action {
