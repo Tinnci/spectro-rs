@@ -300,8 +300,13 @@ impl<T: Transport> Munki<T> {
         high_gain: bool,
         force_time: Option<f64>,
     ) -> Result<(Vec<u16>, f64)> {
-        let min_time =
+        let mut min_time =
             (self.firmware.min_int_count as f64 * self.firmware.tick_duration as f64) * 1e-6;
+
+        // If we have a physics model, the true minimum usable time is the dead zone
+        if let Some(model) = &self.physics_config {
+            min_time = min_time.max(model.t_dead + 0.001); // Add 1ms safety margin
+        }
 
         // If a specific time is requested, use it directly (bypass AE)
         if let Some(t) = force_time {
@@ -802,6 +807,20 @@ impl<T: Transport> Spectrometer for Munki<T> {
         writeln!(csv, "Bias Level (y_bias): {:.1}", model.y_bias).unwrap();
         writeln!(csv, "Saturation (y_sat):  {:.1}", model.y_sat).unwrap();
         writeln!(csv, "True Intensity (k):  {:.1} (Target Constant)", true_k).unwrap();
+
+        // Update memory state
+        self.physics_config = Some(model.clone());
+
+        // Update file state if we have a full calibration set
+        if let (Some(dark), Some(white)) = (&self.dark_ref, &self.white_cal_factors) {
+            let _ = crate::persistence::save_calibration(
+                &self.config.serial_number,
+                dark,
+                white,
+                Some(model.into()),
+            );
+            println!("Physics parameters persisted to profile.");
+        }
 
         println!("{}", csv);
         Ok(csv)
