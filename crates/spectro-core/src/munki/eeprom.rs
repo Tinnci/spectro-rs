@@ -15,6 +15,11 @@ pub struct MunkiConfig {
     pub white_ref: Vec<f32>,
     pub emis_coef: Vec<f32>,
     pub amb_coef: Vec<f32>,
+    pub minsval: f64,
+    pub optsval: f64,
+    pub maxsval: f64,
+    pub satlimit: f64,
+    pub adctype: u8,
 }
 
 pub struct EepromParser;
@@ -128,6 +133,13 @@ impl EepromParser {
             )));
         }
 
+        let minsval = u16::from_le_bytes(data[5400..5402].try_into().unwrap()) as f64;
+        let optsval = u16::from_le_bytes(data[5402..5404].try_into().unwrap()) as f64;
+        let maxsval = u16::from_le_bytes(data[5404..5406].try_into().unwrap()) as f64;
+        let satlimit = u16::from_le_bytes(data[5406..5408].try_into().unwrap()) as f64;
+
+        let adctype = if cal_version >= 6 { data[8168] } else { 0 };
+
         Ok(MunkiConfig {
             cal_version,
             serial_number,
@@ -140,6 +152,11 @@ impl EepromParser {
             white_ref,
             emis_coef,
             amb_coef,
+            minsval,
+            optsval,
+            maxsval,
+            satlimit,
+            adctype,
         })
     }
 }

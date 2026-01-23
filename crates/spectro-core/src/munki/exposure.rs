@@ -34,19 +34,15 @@ pub struct AutoExposure {
 
 impl AutoExposure {
     /// Create a new auto-exposure calculator with the device's minimum integration time.
-    pub fn new(min_time_sec: f64) -> Self {
+    pub fn new(min_time_sec: f64, target_counts: f64, max_counts: f64) -> Self {
         Self {
-            // Target around 75% of full scale (65535)
-            // This leaves headroom for specular highlights or noise while optimizing SNR.
-            target_counts: 49000.0,
-
-            // Accept anything between 20k and 60k as "good enough" to avoid excessive retries.
-            // If < 20k, SNR suffers. If > 60k, risk of saturation.
-            min_counts: 20000.0,
-            max_counts: 60000.0,
+            target_counts,
+            // Accept anything between 40% and 120% of target as "good enough"
+            min_counts: target_counts * 0.4,
+            max_counts,
 
             min_time_sec,
-            max_time_sec: 6.0, // Cap at 6 seconds to prevent extremely long hangs
+            max_time_sec: 6.0,
             max_retries: 4,
             last_peak: None,
             last_time: None,
@@ -66,8 +62,8 @@ impl AutoExposure {
 
         let peak = peak_value as f64;
 
-        // Check for saturation (near 16-bit max)
-        if peak > 65000.0 {
+        // Check for saturation (using hardware-defined limit)
+        if peak > self.max_counts {
             // Saturated. Cut time in half or to min.
             let new_time = (current_time * 0.5).max(self.min_time_sec);
             return ExposureAction::Retry(new_time);

@@ -25,10 +25,22 @@ impl SignalProcessor {
     ) -> Result<SpectralData> {
         let offset = 6;
 
-        // 1. Linearize and subtract dark current
-        // The sensor has 128 active pixels starting at offset 6 in the 137-pixel logical array
-        let mut linearized = Vec::with_capacity(128);
+        // 1. Adaptive Dark Current Compensation
+        // The first 4 readings (0-3) are photo-shielded cells.
+        // We use them to detect and compensate for thermal drift since the last calibration.
+        let drift = if let Some(dark) = dark_ref {
+            let curr_shield_avg: f64 = raw_data[0..4].iter().map(|&x| x as f64).sum::<f64>() / 4.0;
+            let ref_shield_avg: f64 = dark[0..4].iter().map(|&x| x as f64).sum::<f64>() / 4.0;
+            curr_shield_avg - ref_shield_avg
+        } else {
+            0.0
+        };
 
+        if drift.abs() > 0.1 {
+            println!("DEBUG: Thermal drift detected: {:.2} counts", drift);
+        }
+
+        let mut linearized = Vec::with_capacity(128);
         let polys = if high_gain {
             &config.lin_high
         } else {
@@ -44,22 +56,25 @@ impl SignalProcessor {
 
             let mut val = raw_data[offset + i] as f64;
 
-            // Subtract dark reference if available
+            // Subtract dark reference and compensate for drift
             if let Some(dark) = dark_ref
                 && offset + i < dark.len()
             {
-                val -= dark[offset + i] as f64;
+                val -= dark[offset + i] as f64 + drift;
             }
 
-            // Apply linearity polynomial (3rd order)
+            // High-quality sensors should not have negative light,
+            // but noise can push it slightly negative after subtraction.
+            val = val.max(0.0);
+
+            // Apply linearization polynomial (3rd order)
             // L(v) = p3*v^3 + p2*v^2 + p1*v + p0
-            // Computed efficiently using Horner's method
             let mut lval = polys[3] as f64;
             lval = lval * val + polys[2] as f64;
             lval = lval * val + polys[1] as f64;
             lval = lval * val + polys[0] as f64;
 
-            // Scale by integration time
+            // Scale by integration time (Counts/Sec)
             linearized.push((lval * scale) as f32);
         }
 

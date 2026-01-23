@@ -294,7 +294,8 @@ impl<T: Transport> Munki<T> {
             return Ok((raw, t));
         }
 
-        let mut ae = exposure::AutoExposure::new(min_time);
+        let mut ae =
+            exposure::AutoExposure::new(min_time, self.config.optsval, self.config.satlimit);
         let mut current_time = min_time;
 
         // Start with a quick measurement
@@ -549,8 +550,19 @@ impl<T: Transport> Spectrometer for Munki<T> {
             ));
         }
 
-        let mut report = String::from("=== ColorMunki Sensor Linearity Test ===\n");
+        let mut report = String::from("=== ColorMunki Sensor Diagnostic Report ===\n");
         use std::fmt::Write;
+
+        writeln!(report, "--- Hardware Configuration (from EEPROM) ---").unwrap();
+        writeln!(report, "Serial Number: {}", self.config.serial_number).unwrap();
+        writeln!(report, "ADC Type:      {}", self.config.adctype).unwrap();
+        writeln!(report, "Target Min:    {:.0}", self.config.minsval).unwrap();
+        writeln!(report, "Target Opt:    {:.0}", self.config.optsval).unwrap();
+        writeln!(report, "Target Max:    {:.0}", self.config.maxsval).unwrap();
+        writeln!(report, "Saturation:    {:.0}", self.config.satlimit).unwrap();
+        writeln!(report).unwrap();
+
+        writeln!(report, "--- Linearity Test (Lamp ON) ---").unwrap();
 
         let times = [
             0.010, 0.020, 0.040, 0.080, 0.160, 0.320, 0.640, 1.28, 2.0, 4.0,
@@ -640,6 +652,7 @@ impl<T: Transport> Spectrometer for Munki<T> {
         }
 
         writeln!(report, "=== End of Report ===").unwrap();
+        println!("{}", report);
 
         Ok(report)
     }
