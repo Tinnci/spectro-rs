@@ -1,3 +1,4 @@
+# Spectro-rs Workspace
 [workspace]
 members = [
     "crates/spectro-core",
