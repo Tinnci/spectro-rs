@@ -6,6 +6,7 @@ mod exporters;
 mod i18n;
 mod inspector;
 mod shared;
+mod state;
 mod theme;
 mod tm30_gui;
 mod views;

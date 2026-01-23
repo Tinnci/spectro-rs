@@ -262,7 +262,7 @@ pub fn render_measurement_view(app: &mut SpectroApp, ctx: &egui::Context) {
                 // Right side: Reference input toggle
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui
-                        .button(if app.reference_lab.is_some() {
+                        .button(if app.state.reference_lab.is_some() {
                             format!("📌 {}", t!("gui-reference-set"))
                         } else {
                             format!("📌 {}", t!("gui-set-reference"))
@@ -289,9 +289,9 @@ pub fn render_measurement_view(app: &mut SpectroApp, ctx: &egui::Context) {
                     is_connected: app.is_connected,
                     is_calibrated: app.is_calibrated,
                     selected_mode: app.selected_mode,
-                    last_result: app.last_result.as_ref(),
-                    last_tm30: app.last_tm30.as_ref(),
-                    history: &app.measurement_history,
+                    last_result: app.state.active_result.as_ref(),
+                    last_tm30: app.state.active_tm30.as_ref(),
+                    history: &app.state.history,
                     layout: &app.theme_config.layout,
                 },
             );
@@ -345,11 +345,11 @@ pub fn render_measurement_view(app: &mut SpectroApp, ctx: &egui::Context) {
             crate::components::history::render_history(
                 ui,
                 &crate::components::history::HistoryContext {
-                    history: &app.measurement_history,
-                    delta_e_tolerance: app.delta_e_tolerance,
+                    history: &app.state.history,
+                    delta_e_tolerance: app.state.delta_e_tolerance,
                     layout: &app.theme_config.layout,
                     is_detached: app.show_history_detached,
-                    selected_index: app.selected_history_index,
+                    selected_index: app.state.selected_history_index,
                 },
             )
         };
@@ -397,7 +397,7 @@ pub fn render_measurement_view(app: &mut SpectroApp, ctx: &egui::Context) {
     match history_action {
         crate::components::history::HistoryAction::None => {}
         crate::components::history::HistoryAction::Clear => {
-            app.measurement_history.clear();
+            app.state.clear_history();
         }
         crate::components::history::HistoryAction::ExportCsv => app.export_history_csv(),
         crate::components::history::HistoryAction::ExportJson => app.export_history_json(),
@@ -412,25 +412,10 @@ pub fn render_measurement_view(app: &mut SpectroApp, ctx: &egui::Context) {
             app.show_history_detached = false;
         }
         crate::components::history::HistoryAction::Select(idx) => {
-            if let Some(entry) = app.measurement_history.get(idx) {
-                app.last_result = Some(entry.result.clone());
-                app.last_tm30 = entry.tm30.clone();
-                app.selected_history_index = Some(idx);
-            }
+            app.state.select_history_entry(idx);
         }
         crate::components::history::HistoryAction::Delete(idx) => {
-            if app.selected_history_index == Some(idx) {
-                app.selected_history_index = None;
-                app.last_result = app.live_result.clone();
-                app.last_tm30 = app.live_tm30.clone();
-            } else if let Some(ref mut selected) = app.selected_history_index
-                && *selected > idx
-            {
-                *selected -= 1;
-            }
-            if idx < app.measurement_history.len() {
-                app.measurement_history.remove(idx);
-            }
+            app.state.remove_entry(idx);
         }
     }
 
@@ -439,12 +424,13 @@ pub fn render_measurement_view(app: &mut SpectroApp, ctx: &egui::Context) {
         .frame(egui::Frame::none().fill(app.theme_config.adjusted_bg_color(ctx)))
         .show(ctx, |ui| {
             // --- History Warning Banner ---
-            if let Some(idx) = app.selected_history_index {
+            if let Some(idx) = app.state.selected_history_index {
                 let entry_time = app
-                    .measurement_history
+                    .state
+                    .history
                     .get(idx)
-                    .map(|e| e.timestamp.as_str())
-                    .unwrap_or("Unknown");
+                    .map(|e| e.timestamp.clone())
+                    .unwrap_or_else(|| "Unknown".to_string());
 
                 egui::Frame::none()
                     .fill(egui::Color32::from_rgb(255, 193, 7).gamma_multiply(0.2))
@@ -466,9 +452,7 @@ pub fn render_measurement_view(app: &mut SpectroApp, ctx: &egui::Context) {
                                         )
                                         .clicked()
                                     {
-                                        app.selected_history_index = None;
-                                        app.last_result = app.live_result.clone();
-                                        app.last_tm30 = app.live_tm30.clone();
+                                        app.state.view_live();
                                     }
                                 },
                             );
@@ -480,7 +464,7 @@ pub fn render_measurement_view(app: &mut SpectroApp, ctx: &egui::Context) {
                 render_expert_workspace(
                     ui,
                     &ExpertViewContext {
-                        last_result: app.last_result.as_ref(),
+                        last_result: app.state.active_result.as_ref(),
                         layout: &app.theme_config.layout,
                     },
                 );
@@ -488,9 +472,9 @@ pub fn render_measurement_view(app: &mut SpectroApp, ctx: &egui::Context) {
                 render_simple_workspace(
                     ui,
                     &SimpleViewContext {
-                        last_result: app.last_result.as_ref(),
-                        reference_lab: app.reference_lab,
-                        delta_e_tolerance: app.delta_e_tolerance,
+                        last_result: app.state.active_result.as_ref(),
+                        reference_lab: app.state.reference_lab,
+                        delta_e_tolerance: app.state.delta_e_tolerance,
                         layout: &app.theme_config.layout,
                     },
                 );
@@ -528,11 +512,11 @@ pub fn render_measurement_view(app: &mut SpectroApp, ctx: &egui::Context) {
         ctx,
         &mut ReferenceContext {
             show: &mut app.show_reference_input,
-            reference_lab: &mut app.reference_lab,
-            delta_e_tolerance: &mut app.delta_e_tolerance,
-            ref_input_l: &mut app.ref_input_l,
-            ref_input_a: &mut app.ref_input_a,
-            ref_input_b: &mut app.ref_input_b,
+            reference_lab: &mut app.state.reference_lab,
+            delta_e_tolerance: &mut app.state.delta_e_tolerance,
+            ref_input_l: &mut app.state.ref_input_l,
+            ref_input_a: &mut app.state.ref_input_a,
+            ref_input_b: &mut app.state.ref_input_b,
             current_lab,
         },
     );

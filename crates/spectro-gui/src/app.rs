@@ -15,7 +15,7 @@ use crate::backend;
 use crate::calibration::CalibrationWizard;
 use crate::exporters::{self, HistoryExporter};
 use crate::inspector::DeviceInspector;
-use crate::shared::{DeviceCommand, ExtendedDeviceInfo, MeasurementEntry, UIUpdate};
+use crate::shared::{DeviceCommand, ExtendedDeviceInfo, UIUpdate};
 use crate::t;
 use crate::theme::{ThemeConfig, panel_bg_dark_color};
 use crate::views::calibration::{
@@ -34,6 +34,8 @@ pub enum AppView {
 // Application State
 // ============================================================================
 
+use crate::state::AppState;
+
 pub struct SpectroApp {
     // Communication
     pub(crate) cmd_tx: Sender<DeviceCommand>,
@@ -47,20 +49,9 @@ pub struct SpectroApp {
     // Measurement State
     pub(crate) is_calibrated: bool,
     pub(crate) selected_mode: MeasurementMode,
-    pub(crate) last_result: Option<spectro_rs::spectrum::MeasurementResult>,
-    pub(crate) last_tm30: Option<spectro_rs::tm30::TM30Metrics>,
-    pub(crate) live_result: Option<spectro_rs::spectrum::MeasurementResult>,
-    pub(crate) live_tm30: Option<spectro_rs::tm30::TM30Metrics>,
-    pub(crate) measurement_history: Vec<MeasurementEntry>,
 
-    // Reference/Standard for comparison
-    pub(crate) reference_lab: Option<Lab>,
-    pub(crate) delta_e_tolerance: f32,
-
-    // Reference input dialog state
-    pub(crate) ref_input_l: f32,
-    pub(crate) ref_input_a: f32,
-    pub(crate) ref_input_b: f32,
+    // Encapsulated Application State
+    pub(crate) state: AppState,
 
     // UI State
     pub(crate) is_expert_mode: bool,
@@ -90,9 +81,6 @@ pub struct SpectroApp {
 
     // Display Calibration State
     pub(crate) display_calibration: DisplayCalibrationState,
-
-    // Selection state
-    pub(crate) selected_history_index: Option<usize>,
 }
 
 // ============================================================================
@@ -127,16 +115,7 @@ impl SpectroApp {
             is_busy: false,
             is_calibrated: false,
             selected_mode: MeasurementMode::Reflective,
-            last_result: None,
-            last_tm30: None,
-            live_result: None,
-            live_tm30: None,
-            measurement_history: Vec::new(),
-            reference_lab: None,
-            delta_e_tolerance: 2.0,
-            ref_input_l: 50.0,
-            ref_input_a: 0.0,
-            ref_input_b: 0.0,
+            state: AppState::new(),
             is_expert_mode: false,
             show_reference_input: false,
             show_settings: false,
@@ -154,7 +133,6 @@ impl SpectroApp {
             selected_observer: Observer::CIE1931_2,
             calibration_wizard: CalibrationWizard::new(),
             display_calibration: DisplayCalibrationState::default(),
-            selected_history_index: None,
         }
     }
 
@@ -163,7 +141,7 @@ impl SpectroApp {
     // ========================================================================
 
     fn export_with<T: HistoryExporter>(&self, exporter: T) {
-        if self.measurement_history.is_empty() {
+        if self.state.history.is_empty() {
             return;
         }
 
@@ -173,49 +151,14 @@ impl SpectroApp {
             .save_file();
 
         if let Some(path) = file_path
-            && let Err(e) = exporter.export(&self.measurement_history, &path)
+            && let Err(e) = exporter.export(&self.state.history, &path)
         {
             eprintln!("Failed to export {}: {}", exporter.name(), e);
         }
     }
 
     pub(crate) fn get_current_lab(&self) -> Option<Lab> {
-        self.last_result.as_ref().map(|res| res.lab)
-    }
-
-    pub(crate) fn add_to_history(
-        &mut self,
-        result: spectro_rs::spectrum::MeasurementResult,
-        tm30: Option<spectro_rs::tm30::TM30Metrics>,
-    ) {
-        let lab = result.lab;
-        let delta_e = self
-            .reference_lab
-            .as_ref()
-            .map(|ref_lab| lab.delta_e_2000(ref_lab));
-
-        let entry = MeasurementEntry {
-            timestamp: chrono::Local::now().format("%H:%M:%S").to_string(),
-            mode: self.selected_mode,
-            result, // Using the new consolidated result
-            tm30,
-            delta_e,
-        };
-
-        self.measurement_history.insert(0, entry);
-        // Offset selection if we inserted before it
-        if let Some(ref mut idx) = self.selected_history_index {
-            *idx += 1;
-        }
-
-        // Keep only last 50 measurements
-        if self.measurement_history.len() > 50 {
-            self.measurement_history.pop();
-            // Deselect if we popped the selected item
-            if self.selected_history_index == Some(50) {
-                self.selected_history_index = None;
-            }
-        }
+        self.state.current_lab()
     }
 
     /// Export the measurement history to a CSV file.
@@ -271,18 +214,9 @@ impl eframe::App for SpectroApp {
                     if self.current_view == AppView::DisplayCalibration {
                         self.display_calibration.handle_result(data.xyz);
                     } else {
-                        self.add_to_history(data.clone(), tm30_val.clone());
+                        self.state
+                            .add_measurement(data, tm30_val, self.selected_mode);
                     }
-
-                    // Always update live result
-                    self.live_result = Some(data.clone());
-                    self.live_tm30 = tm30_val.clone();
-
-                    // Update visible result only if not explicitly viewing history
-                    // (Or if we want to auto-switch to new measurement, which is usually preferred)
-                    self.last_result = Some(data);
-                    self.last_tm30 = tm30_val;
-                    self.selected_history_index = None; // Reset to "Live" when new data arrives
                     self.is_busy = false;
                 }
                 UIUpdate::Error(err) => {
