@@ -8,8 +8,10 @@ use objc2_foundation::MainThreadMarker;
 use super::DisplayController;
 
 pub struct NativeDisplay {
-    // Keep window alive
-    window: Retained<NSWindow>,
+    // Background window (black curtain)
+    bg_window: Retained<NSWindow>,
+    // Patch window (actual color)
+    patch_window: Retained<NSWindow>,
 }
 
 impl DisplayController for NativeDisplay {
@@ -32,34 +34,63 @@ impl DisplayController for NativeDisplay {
         let level = 1000 as NSWindowLevel;
 
         unsafe {
-            // Create a borderless window covering the full screen
-            // Use msg_send_id! for robust init calling
+            // 1. Create Background Window (Curtain)
             let style = NSWindowStyleMask::Borderless;
-
-            let alloc = mtm.alloc::<NSWindow>();
-            let window: Retained<NSWindow> = msg_send_id![
-                alloc,
+            let alloc_bg = mtm.alloc::<NSWindow>();
+            let bg_window: Retained<NSWindow> = msg_send_id![
+                alloc_bg,
                 initWithContentRect: frame,
                 styleMask: style,
                 backing: backing_store,
                 defer: false
             ];
-            // Set window level
-            window.setLevel(level);
+            bg_window.setLevel(level);
+            bg_window.setOpaque(true);
+            bg_window.setHasShadow(false);
+            bg_window.setIgnoresMouseEvents(true);
 
-            // Configure window properties
-            window.setOpaque(true);
-            window.setHasShadow(false);
-            window.setIgnoresMouseEvents(true);
-
-            // Set initial color to Black
+            // Set background to solid black
             let black = NSColor::colorWithDeviceRed_green_blue_alpha(0.0, 0.0, 0.0, 1.0);
-            window.setBackgroundColor(Some(&black));
+            bg_window.setBackgroundColor(Some(&black));
 
-            // Show the window
-            window.makeKeyAndOrderFront(None);
+            // 2. Create Patch Window (Centered)
+            // Define patch size (e.g., 50% of screen or fixed size like 400x400)
+            // Let's go with a reasonable fixed size for now or proportional.
+            // ArgyllCMS typically uses a small window unless -f is specified.
+            // Let's use 500x500 points centered.
+            let patch_size = 500.0;
+            let patch_rect = objc2_foundation::NSRect::new(
+                objc2_foundation::NSPoint::new(
+                    frame.origin.x + (frame.size.width - patch_size) / 2.0,
+                    frame.origin.y + (frame.size.height - patch_size) / 2.0,
+                ),
+                objc2_foundation::NSSize::new(patch_size, patch_size),
+            );
 
-            Ok(Self { window })
+            let alloc_patch = mtm.alloc::<NSWindow>();
+            let patch_window: Retained<NSWindow> = msg_send_id![
+                alloc_patch,
+                initWithContentRect: patch_rect,
+                styleMask: style,
+                backing: backing_store,
+                defer: false
+            ];
+            // Patch needs to be above background. +1 level is enough.
+            patch_window.setLevel((level + 1) as NSWindowLevel);
+            patch_window.setOpaque(true);
+            patch_window.setHasShadow(false);
+            patch_window.setIgnoresMouseEvents(true);
+            // Default to black initially
+            patch_window.setBackgroundColor(Some(&black));
+
+            // Show windows
+            bg_window.makeKeyAndOrderFront(None);
+            patch_window.makeKeyAndOrderFront(None);
+
+            Ok(Self {
+                bg_window,
+                patch_window,
+            })
         }
     }
 
@@ -68,10 +99,10 @@ impl DisplayController for NativeDisplay {
             // Use device RGB to bypass color management
             let color =
                 NSColor::colorWithDeviceRed_green_blue_alpha(r as f64, g as f64, b as f64, 1.0);
-            self.window.setBackgroundColor(Some(&color));
+            self.patch_window.setBackgroundColor(Some(&color));
 
             // Force immediate flush (Argyll does this via [window display])
-            self.window.display();
+            self.patch_window.display();
         }
     }
 }
@@ -79,7 +110,8 @@ impl DisplayController for NativeDisplay {
 impl NativeDisplay {
     /// Hide/Close the window.
     pub fn close(&self) {
-        self.window.close();
+        self.patch_window.close();
+        self.bg_window.close();
     }
 }
 
