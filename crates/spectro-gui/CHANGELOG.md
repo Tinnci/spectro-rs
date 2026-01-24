@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.8](https://github.com/Tinnci/spectro-rs/compare/spectro-gui-v0.3.7...spectro-gui-v0.3.8) (2026-01-24)
+
+
+### Features
+
+* Add CIE 2015 Observer and Native Display Calibration ([d6c901e](https://github.com/Tinnci/spectro-rs/commit/d6c901e1128db54502ba5c26effb7682bd39e0f0))
+* Finalize VCGT Reset and Optimized Patch sequence in GUI ([a6f88b0](https://github.com/Tinnci/spectro-rs/commit/a6f88b04ceaf1f8e9c113b7bc36d9846b1fb1935))
+* **gui:** decouple calibration logic using state machine and add visual overlay interaction ([3a24314](https://github.com/Tinnci/spectro-rs/commit/3a24314c7b3f9458d382deb40eb553cdccc579f2))
+* Implement Advanced Target Generation and Integrate VCGT ([7028068](https://github.com/Tinnci/spectro-rs/commit/7028068291d365ede2d6cd2db0449bcec142e49b))
+
 ## [0.3.7](https://github.com/Tinnci/spectro-rs/compare/spectro-gui-v0.3.6...spectro-gui-v0.3.7) (2026-01-23)
 
 
