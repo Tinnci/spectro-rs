@@ -171,7 +171,8 @@ impl Colorimetry for SpectralData {
 
     fn to_xyz_emissive_ext(&self, obs: Observer) -> XYZ {
         const STEP: f32 = 10.0;
-        const KM: f32 = 683.0; // CIE photometric constant lm/W
+        // Input SPD is in mW/nm/m² (Argyll convention), so we divide Km by 1000.
+        const KM: f32 = 0.683; // 683 lm/W / 1000 mW/W
         let (xb, yb, zb) = obs.get_cmfs();
         let mut x = 0.0f32;
         let mut y = 0.0f32;
@@ -207,7 +208,8 @@ impl Colorimetry for SpectralData {
 
     fn to_xyz_emissive_2(&self) -> XYZ {
         const STEP: f32 = 10.0;
-        const KM: f32 = 683.0; // CIE photometric constant lm/W
+        // Input SPD is in mW, scale Km to 0.683
+        const KM: f32 = 0.683;
         let mut x = 0.0f32;
         let mut y = 0.0f32;
         let mut z = 0.0f32;
@@ -233,7 +235,7 @@ impl Colorimetry for SpectralData {
             self.mode,
             MeasurementMode::Emissive | MeasurementMode::Ambient
         ) {
-            683.0
+            0.683
         } else {
             1.0 // Reflective is relative
         };
