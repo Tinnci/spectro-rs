@@ -101,11 +101,9 @@ impl SignalProcessor {
                 // Drift compensation is always needed
                 val -= drift;
 
-                // If using Physics Model -> Do NOT subtract static dark frame (model handles bias).
-                // If using Legacy Model  -> MUST subtract static dark frame.
-                if physics_model.is_none() {
-                    val -= dark[offset + i] as f64;
-                }
+                // ALWAYS subtract dark frame to remove Fixed Pattern Noise (FPN)
+                // and compensate for the actual, current black level.
+                val -= dark[offset + i] as f64;
             }
 
             // High-quality sensors should not have negative light
@@ -113,9 +111,17 @@ impl SignalProcessor {
 
             if let Some(model) = physics_model {
                 // --- PHYSICS PATH ---
+                // If we performed dark subtraction, 'val' is now zero-based signal (y - y_meas_bias).
+                // The physics model expects 'y_bias' offset. Re-inject it to align with the curve.
+                let input_val = if dark_ref.is_some() {
+                    val + model.y_bias
+                } else {
+                    val
+                };
+
                 // 1. Linearize using physical transfer function: k = (y - bias) / (t - dead)
                 let k_rate = model
-                    .solve_intensity(val, integration_time_sec)
+                    .solve_intensity(input_val, integration_time_sec)
                     .unwrap_or(0.0);
 
                 // 2. Map to legacy energy scale using P1 (Gain) and P0 (Offset)
