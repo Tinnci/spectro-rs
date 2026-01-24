@@ -128,6 +128,30 @@ impl DisplayCalibrationView {
                 };
             });
 
+        // 4. Update Time-based Logic (Auto-start / Countdown) & Poll for Requests
+        let dt = ui.input(|i| i.stable_dt);
+
+        // Handle User Input directly to Manager
+        if self.manager.waiting_for_user_position {
+            if ui.input(|i| i.key_pressed(egui::Key::Space)) {
+                self.manager.confirm_user_position();
+            }
+            // Animate timer
+            if self.manager.auto_start_timer.is_some() {
+                ui.ctx().request_repaint();
+            }
+        }
+
+        // Poll the State Machine
+        if let Some(req) = self.manager.poll(dt) {
+            match req {
+                crate::calibration::ManagerRequest::Measure(_) => {
+                    action = CalibrationAction::RequestMeasurement;
+                }
+                crate::calibration::ManagerRequest::None => {}
+            }
+        }
+
         action
     }
 }
@@ -164,28 +188,44 @@ fn render_overlay(
     };
 
     let painter = ui.ctx().layer_painter(egui::LayerId::debug());
-    let rect = ui.ctx().input(|i| i.screen_rect());
+    let screen_rect = ui.ctx().input(|i| i.screen_rect());
 
-    // Smooth transition simulation for eye comfort
-    painter.rect_filled(rect, 0.0, color);
+    // 1. Fill background with Black
+    painter.rect_filled(screen_rect, 0.0, egui::Color32::BLACK);
 
-    // Minimal status HUD in the corner to avoid interference with the sensor center
-    let hud_rect = egui::Rect::from_min_size(
-        rect.left_top() + egui::vec2(20.0, 20.0),
-        egui::vec2(200.0, 40.0),
+    // 2. Define the measurement patch area (centered fixed box)
+    let patch_size = egui::vec2(400.0, 400.0);
+    let patch_rect = egui::Rect::from_center_size(screen_rect.center(), patch_size);
+
+    // 3. Fill the patch area
+    painter.rect_filled(patch_rect, 0.0, color);
+
+    // 4. Draw a guide frame
+    // Use a high-contrast border (Yellow) to guide placement
+    let border_stroke = egui::Stroke::new(3.0, egui::Color32::YELLOW);
+    painter.rect_stroke(patch_rect, 0.0, border_stroke);
+
+    // 5. Instruction Text (Visual Only)
+    painter.text(
+        patch_rect.center_top() - egui::vec2(0.0, 20.0),
+        egui::Align2::CENTER_BOTTOM,
+        "👇 Place Sensor Here (请将传感器放置在此框内) 👇",
+        egui::FontId::proportional(24.0),
+        egui::Color32::YELLOW,
     );
 
-    let text_color = if color.r() > 128 {
-        egui::Color32::BLACK
-    } else {
-        egui::Color32::WHITE
-    };
+    // Minimal status HUD in the corner
+    let hud_rect = egui::Rect::from_min_size(
+        screen_rect.left_top() + egui::vec2(20.0, 20.0),
+        egui::vec2(300.0, 40.0),
+    );
+
     painter.text(
         hud_rect.left_center(),
         egui::Align2::LEFT_CENTER,
         format!("📷 MEASURING PHASE - [{}]", manager.get_status_text()),
         egui::FontId::proportional(14.0),
-        text_color,
+        egui::Color32::WHITE,
     );
 
     ui.ctx()

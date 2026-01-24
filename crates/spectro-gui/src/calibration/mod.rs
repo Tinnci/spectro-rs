@@ -19,6 +19,7 @@ pub enum CalibrationFlowStep {
     Result,
 }
 
+#[derive(Default)]
 pub struct CalibrationReadings {
     pub white_point: Option<XYZ>,
     pub black_point: Option<XYZ>,
@@ -47,11 +48,14 @@ impl Default for CalibrationConfig {
 /// - **SRP**: This struct is responsible ONLY for the business logic and state management
 ///   of the calibration process. It does not handle rendering or specific UI events.
 /// - **SSOT**: This struct serves as the Single Source of Truth for the calibration state.
-///   The View layer should strictly observe this state and delegate actions to it.
-///
-/// # 架构说明
-/// - **单一职责原则 (SRP)**: 本结构体仅负责校准流程的业务逻辑和状态管理，不处理渲染或UI事件。
-/// - **单一数据源 (SSOT)**: 本结构体是校准状态的唯一事实来源，视图层应严格遵循此状态。
+///   The View layer should strictly observe this state and delegate actions to /// Commands that the Manager requests from the infrastructure (App/Hardware).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum ManagerRequest {
+    #[default]
+    None,
+    Measure(spectro_rs::MeasurementMode),
+}
+
 pub struct DisplayCalibrationManager {
     pub step: CalibrationFlowStep,
     pub config: CalibrationConfig,
@@ -64,6 +68,13 @@ pub struct DisplayCalibrationManager {
     // Runtime State
     pub current_target: CalibrationTarget,
     pub is_measuring: bool,
+
+    // User Interaction State
+    pub waiting_for_user_position: bool,
+    pub auto_start_timer: Option<f32>,
+
+    // Request Queue
+    pub pending_request: ManagerRequest,
 }
 
 impl Default for DisplayCalibrationManager {
@@ -80,6 +91,9 @@ impl Default for DisplayCalibrationManager {
             result: None,
             current_target: CalibrationTarget::None,
             is_measuring: false,
+            waiting_for_user_position: false,
+            auto_start_timer: None,
+            pending_request: ManagerRequest::None,
         }
     }
 }
@@ -89,9 +103,26 @@ impl DisplayCalibrationManager {
         *self = Self::default();
     }
 
+    /// Primary Interaction: User confirms sensor placement.
+    pub fn confirm_user_position(&mut self) {
+        if self.waiting_for_user_position {
+            self.waiting_for_user_position = false;
+            self.auto_start_timer = None;
+            // Immediate transition: If we were waiting to measure, now we request it.
+            if self.is_measuring {
+                self.pending_request =
+                    ManagerRequest::Measure(spectro_rs::MeasurementMode::Emissive); // Or Reflective based on config? Defaulting Emissive for Display Cal.
+            }
+        }
+    }
+
+    /// Primary Interaction: User wants to measure a specific target.
     pub fn prepare_measurement(&mut self, target: CalibrationTarget) {
         self.current_target = target;
         self.is_measuring = true;
+        self.waiting_for_user_position = true;
+        self.auto_start_timer = None;
+        self.pending_request = ManagerRequest::None;
     }
 
     pub fn start_session(&mut self) {
@@ -103,7 +134,14 @@ impl DisplayCalibrationManager {
         ));
         self.current_target = CalibrationTarget::Ramp;
         self.step = CalibrationFlowStep::Measure;
+
         self.is_measuring = true;
+
+        // UX: Default to auto-advance, but WAIT for the first placement.
+        self.config.auto_advance = true;
+        self.waiting_for_user_position = true;
+        self.auto_start_timer = None;
+        self.pending_request = ManagerRequest::None;
     }
 
     pub fn can_start_characterization(&self) -> bool {
@@ -112,24 +150,24 @@ impl DisplayCalibrationManager {
 
     pub fn get_status_text(&self) -> String {
         match self.step {
-            CalibrationFlowStep::Intro => "Ready to begin display optimization".to_string(),
-            CalibrationFlowStep::Setup => {
-                if self.readings.white_point.is_none() {
-                    "Waiting for white point reference...".to_string()
-                } else if self.readings.black_point.is_none() {
-                    "Optional: Measure black point for better contrast accuracy".to_string()
-                } else {
-                    "System calibrated. Ready for patch sequence.".to_string()
-                }
-            }
+            CalibrationFlowStep::Intro => "Ready to begin".to_string(),
+            CalibrationFlowStep::Setup => "Setup hardware".to_string(),
             CalibrationFlowStep::Measure => {
                 if let Some((idx, total)) = self.get_progress() {
-                    format!("Analyzing gamut response: Patch {} of {}", idx + 1, total)
+                    if self.waiting_for_user_position {
+                        if let Some(t) = self.auto_start_timer {
+                            format!("Starting in {:.1}s...", t)
+                        } else {
+                            "Waiting for start...".to_string()
+                        }
+                    } else {
+                        format!("Measuring Patch {}/{}", idx + 1, total)
+                    }
                 } else {
-                    "Initializing sensor sequence...".to_string()
+                    "Initializing...".to_string()
                 }
             }
-            CalibrationFlowStep::Result => "Optimization complete. Review and export.".to_string(),
+            CalibrationFlowStep::Result => "Complete".to_string(),
         }
     }
 
@@ -148,7 +186,6 @@ impl DisplayCalibrationManager {
                 self.current_target = CalibrationTarget::None;
             }
             CalibrationTarget::Ramp => {
-                // If we are in the Ramp mode, we feed the measurement to the session
                 if let Some(session) = &mut self.session {
                     session.add_measurement(xyz);
                     self.is_measuring = false;
@@ -156,30 +193,11 @@ impl DisplayCalibrationManager {
                     if session.is_complete() {
                         self.finish_calibration();
                     } else if self.config.auto_advance {
-                        // If auto-advance is on, immediately prepare for next
-                        // But wait, in a real physical world, we need to show the color FIRST,
-                        // then wait for the sensor.
-                        // "prepare_measurement" typically just sets flags.
-                        // The UI cycle will pick this up, show the color, and trigger measurement.
-                        // We set is_measuring = true immediately?
-                        // No, usually we want to Request a measurement.
-                        // The Loop:
-                        // 1. Manager says "Target: Ramp(Gray 50)" and "IsMeasuring: true" (waiting for result)
-                        // 2. UI renders Gray 50
-                        // 3. User (or Auto) clicks "Measure"
-                        // 4. HW returns XYZ -> handle_measurement(XYZ)
-                        // 5. Manager updates session.
-                        // 6. IF Auto-advance: Manager says "Target: Ramp(Gray 60)" AND...
-                        //    Wait, we need to trigger the HW to measure.
-                        //    The Manager cannot trigger HW directly (it's passive).
-                        //    So we just set state ready for next one.
-
-                        // We will set is_measuring = true, implying we WANT a measurement for the *next* patch.
-                        // But the previous patch just finished. The session moved to next patch index automatically?
-                        // Yes, session.add_measurement() advances the internal cursor.
-
-                        // So we just stay in Measuring state.
+                        // Continuous FLow: Automatically queue next measurement without waiting
                         self.is_measuring = true;
+                        self.waiting_for_user_position = false;
+                        self.pending_request =
+                            ManagerRequest::Measure(spectro_rs::MeasurementMode::Emissive);
                     }
                 }
             }
@@ -195,12 +213,10 @@ impl DisplayCalibrationManager {
             self.step = CalibrationFlowStep::Result;
             self.is_measuring = false;
             self.current_target = CalibrationTarget::None;
-            // Turn off auto-advance so we don't loop
             self.config.auto_advance = false;
         }
     }
 
-    // Helper to get current ramp target color (0.0 - 1.0)
     pub fn get_current_ramp_level(&self) -> Option<f32> {
         self.session.as_ref().and_then(|s| s.current_level())
     }
@@ -209,20 +225,41 @@ impl DisplayCalibrationManager {
         self.session.as_ref().map(|s| s.progress())
     }
 
-    // Simulation logic for testing without HW
     pub fn simulate_step(&mut self) {
         if self.current_target == CalibrationTarget::Ramp && self.session.is_some() {
             let level = self.get_current_ramp_level().unwrap_or(0.0);
-            // Simulate a generic gamma 2.2 display response
-            // L = 100 * level^2.2
             let y = 100.0 * level.powf(2.2);
             let sim_xyz = XYZ {
                 x: y * 0.95,
                 y,
                 z: y * 1.08,
             };
-
             self.handle_measurement(sim_xyz);
         }
+    }
+
+    #[allow(clippy::collapsible_if)]
+    /// State Machine Tick
+    /// Should be called every frame. Handles timers and request emission.
+    pub fn poll(&mut self, dt: f32) -> Option<ManagerRequest> {
+        // 1. Update Timers
+        if self.waiting_for_user_position {
+            if let Some(timer) = &mut self.auto_start_timer {
+                *timer -= dt;
+                if *timer <= 0.0 {
+                    self.confirm_user_position(); // Auto-confirm
+                }
+            }
+        }
+
+        // 2. Emit Requests
+        // Separation of concerns: Manager decides WHEN to request.
+        let req = self.pending_request.clone();
+        if req != ManagerRequest::None {
+            self.pending_request = ManagerRequest::None; // Consume
+            return Some(req);
+        }
+
+        None
     }
 }
