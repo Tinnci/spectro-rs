@@ -183,22 +183,9 @@ impl SpectroApp {
     pub(crate) fn export_history_cgats(&self) {
         self.export_with(exporters::CgatsExporter);
     }
-}
 
-// ============================================================================
-// eframe::App Implementation
-// ============================================================================
-
-impl eframe::App for SpectroApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // === Unified Theme Application (SSoT) ===
-        if self.theme_dirty {
-            self.theme_config.apply_to_ctx(ctx);
-            let _ = self.theme_config.save("spectro_theme.json");
-            self.theme_dirty = false;
-        }
-
-        // Handle updates from hardware thread
+    /// Handle updates from the hardware thread
+    fn process_updates(&mut self) {
         while let Ok(update) = self.update_rx.try_recv() {
             match update {
                 UIUpdate::Connected(info) => {
@@ -216,16 +203,19 @@ impl eframe::App for SpectroApp {
                 }
                 UIUpdate::Result(data, tm30) => {
                     let tm30_val = tm30.map(|b| *b);
-                    if self.current_view == AppView::DisplayCalibration {
-                        self.display_calibration.handle_measurement(data.xyz);
-                    } else {
-                        self.state
-                            .add_measurement(data, tm30_val, self.selected_mode);
+                    // Delegate result handling based on current context
+                    match self.current_view {
+                        AppView::DisplayCalibration => {
+                            self.display_calibration.handle_measurement(data.xyz);
+                        }
+                        _ => {
+                            self.state
+                                .add_measurement(data, tm30_val, self.selected_mode);
+                        }
                     }
                     self.is_busy = false;
                 }
                 UIUpdate::Error(err) => {
-                    // Critical Update: Forward specific calibration errors to the wizard UI
                     if self.calibration_wizard.state.show {
                         self.calibration_wizard.on_calibration_error(err.clone());
                     }
@@ -246,6 +236,24 @@ impl eframe::App for SpectroApp {
                 }
             }
         }
+    }
+}
+
+// ============================================================================
+// eframe::App Implementation
+// ============================================================================
+
+impl eframe::App for SpectroApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Apply theme if changed
+        if self.theme_dirty {
+            self.theme_config.apply_to_ctx(ctx);
+            let _ = self.theme_config.save("spectro_theme.json");
+            self.theme_dirty = false;
+        }
+
+        // Process hardware messages
+        self.process_updates();
 
         // === Sidebar Navigation ===
         egui::SidePanel::left("main_sidebar")
@@ -326,6 +334,9 @@ impl eframe::App for SpectroApp {
                                     spectro_rs::MeasurementMode::Emissive,
                                 ))
                                 .ok();
+                        }
+                        CalibrationAction::Close => {
+                            self.current_view = AppView::Measurement;
                         }
                         CalibrationAction::None => {}
                     }
