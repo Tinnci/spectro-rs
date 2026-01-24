@@ -54,8 +54,6 @@ pub enum InspectorTab {
 pub struct DeviceInspector {
     /// Currently selected tab
     pub tab: InspectorTab,
-    /// Whether the panel is visible
-    pub visible: bool,
     /// Whether the inspector is detached in its own window
     pub is_detached: bool,
 }
@@ -71,14 +69,8 @@ impl DeviceInspector {
     pub fn new() -> Self {
         Self {
             tab: InspectorTab::default(),
-            visible: true,
             is_detached: false,
         }
-    }
-
-    /// Toggle panel visibility.
-    pub fn toggle(&mut self) {
-        self.visible = !self.visible;
     }
 
     /// Render the inspector panel content.
@@ -86,13 +78,14 @@ impl DeviceInspector {
     /// # Arguments
     /// * `ui` - The egui UI context
     /// * `ctx` - Inspector rendering context containing all required data
-    pub fn render(&mut self, ui: &mut egui::Ui, ctx: &InspectorContext) {
+    /// * `is_visible` - Mutable reference to control panel visibility
+    pub fn render(&mut self, ui: &mut egui::Ui, ctx: &InspectorContext, is_visible: &mut bool) {
         // Header with title and close button
         ui.horizontal(|ui| {
             ui.heading(t!("gui-device-inspector"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button("⏵").on_hover_text(t!("gui-hide")).clicked() {
-                    self.visible = false;
+                    *is_visible = false;
                 }
 
                 let detach_icon = if self.is_detached { "📥" } else { "📤" };

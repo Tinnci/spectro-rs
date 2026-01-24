@@ -23,7 +23,7 @@ pub fn render_measurement_view(app: &mut SpectroApp, ctx: &egui::Context) {
         if app.show_history_panel && !app.show_history_detached {
             min_width += app.theme_config.layout.history_min_width;
         }
-        if app.inspector.visible && !app.inspector.is_detached {
+        if app.show_inspector && !app.inspector.is_detached {
             min_width += app.theme_config.layout.inspector_min_width;
         }
     }
@@ -106,17 +106,17 @@ pub fn render_measurement_view(app: &mut SpectroApp, ctx: &egui::Context) {
                         ui.separator();
 
                         // Inspector toggle
-                        let inspector_btn = if app.inspector.visible {
+                        let inspector_btn = if app.show_inspector {
                             egui::RichText::new("🔍").strong()
                         } else {
                             egui::RichText::new("🔍").weak()
                         };
                         if ui
-                            .selectable_label(app.inspector.visible, inspector_btn)
+                            .selectable_label(app.show_inspector, inspector_btn)
                             .on_hover_text(t!("gui-device-inspector"))
                             .clicked()
                         {
-                            app.inspector.toggle();
+                            app.show_inspector = !app.show_inspector;
                         }
 
                         // History toggle
@@ -280,8 +280,13 @@ pub fn render_measurement_view(app: &mut SpectroApp, ctx: &egui::Context) {
     // ========================================================================
 
     // --- Inspector Panel ---
-    if app.is_expert_mode && app.inspector.visible {
-        let render_inspector = |ui: &mut egui::Ui, app: &mut SpectroApp| {
+    if app.is_expert_mode && app.show_inspector {
+        // Due to borrow checker complexity with the helper macro and state splitting,
+        // we implement the docking logic manually here.
+        let is_detached = app.inspector.is_detached;
+        let title = format!("🔍 {}", t!("gui-device-inspector"));
+
+        let render_inspector_content = |ui: &mut egui::Ui, app: &mut SpectroApp| {
             app.inspector.render(
                 ui,
                 &crate::inspector::InspectorContext {
@@ -294,45 +299,41 @@ pub fn render_measurement_view(app: &mut SpectroApp, ctx: &egui::Context) {
                     history: &app.state.history,
                     layout: &app.theme_config.layout,
                 },
+                &mut app.show_inspector,
             );
         };
 
-        if app.inspector.is_detached {
-            // Detached: Render in a separate OS window (Viewport)
+        if is_detached {
             let viewport_id = egui::ViewportId::from_hash_of("inspector_viewport");
             ctx.show_viewport_immediate(
                 viewport_id,
                 egui::ViewportBuilder::default()
-                    .with_title(format!("🔍 {}", t!("gui-device-inspector")))
+                    .with_title(title.clone())
                     .with_inner_size([360.0, 600.0])
                     .with_min_inner_size([300.0, 400.0]),
                 |ctx, class| {
                     if class == egui::ViewportClass::Embedded {
-                        // Fallback if viewports are not supported
-                        let mut visible = true;
-                        egui::Window::new(format!("🔍 {}", t!("gui-device-inspector")))
-                            .open(&mut visible)
-                            .show(ctx, |ui| render_inspector(ui, app));
+                        let mut open = true;
+                        egui::Window::new(title.clone())
+                            .open(&mut open)
+                            .show(ctx, |ui| render_inspector_content(ui, app));
+                        if !open {
+                            app.show_inspector = false;
+                        }
                     } else {
-                        // Native Window Content
-                        egui::CentralPanel::default().show(ctx, |ui| {
-                            render_inspector(ui, app);
-                        });
-                        // Handle close request from OS window close button
+                        egui::CentralPanel::default()
+                            .show(ctx, |ui| render_inspector_content(ui, app));
                         if ctx.input(|i| i.viewport().close_requested()) {
-                            app.inspector.visible = false;
+                            app.show_inspector = false;
                         }
                     }
                 },
             );
         } else {
-            // Docked SidePanel Mode
             egui::SidePanel::right("inspector_panel")
                 .resizable(true)
                 .default_width(app.theme_config.layout.inspector_default_width)
-                .show(ctx, |ui| {
-                    render_inspector(ui, app);
-                });
+                .show(ctx, |ui| render_inspector_content(ui, app));
         }
     }
 
@@ -354,8 +355,8 @@ pub fn render_measurement_view(app: &mut SpectroApp, ctx: &egui::Context) {
             )
         };
 
+        // Manual implementation mainly to keep it consistent and avoid fighting borrows today
         if app.show_history_detached {
-            // Detached: Render in a separate OS window (Viewport)
             let viewport_id = egui::ViewportId::from_hash_of("history_viewport");
             ctx.show_viewport_immediate(
                 viewport_id,
@@ -365,15 +366,16 @@ pub fn render_measurement_view(app: &mut SpectroApp, ctx: &egui::Context) {
                     .with_min_inner_size([300.0, 300.0]),
                 |ctx, class| {
                     if class == egui::ViewportClass::Embedded {
-                        // Fallback
-                        let mut visible = true;
+                        let mut open = true;
                         egui::Window::new(t!("gui-history-title"))
-                            .open(&mut visible)
+                            .open(&mut open)
                             .show(ctx, |ui| {
                                 history_action = render_history_wrapper(ui, app);
                             });
+                        if !open {
+                            app.show_history_panel = false;
+                        }
                     } else {
-                        // Native Window Content
                         egui::CentralPanel::default().show(ctx, |ui| {
                             history_action = render_history_wrapper(ui, app);
                         });
@@ -384,7 +386,6 @@ pub fn render_measurement_view(app: &mut SpectroApp, ctx: &egui::Context) {
                 },
             );
         } else {
-            // Docked SidePanel Mode
             egui::SidePanel::left("history_panel")
                 .resizable(true)
                 .default_width(300.0)
@@ -496,7 +497,7 @@ pub fn render_measurement_view(app: &mut SpectroApp, ctx: &egui::Context) {
         },
     );
 
-    // Debug Settings Window
+    // DebugSettings Window
     render_debug_settings_window(
         ctx,
         &mut DebugSettingsContext {
@@ -530,14 +531,17 @@ pub fn render_measurement_view(app: &mut SpectroApp, ctx: &egui::Context) {
         &app.theme_config.layout,
     );
 
-    // Mode Guidance reminder (if we're busy measuring and not in the wizard)
-    // Mode Guidance reminder (if we're busy measuring and not in the wizard)
+    // Mode Guidance reminder
     if app.is_busy && !app.calibration_wizard.state.show && !app.status_msg.contains("Calibrate") {
         let highlight = match app.selected_mode {
             spectro_rs::MeasurementMode::Reflective => "REFLECTIVE",
             spectro_rs::MeasurementMode::Emissive => "EMISSIVE",
             spectro_rs::MeasurementMode::Ambient => "AMBIENT",
         };
-        crate::calibration::render_dial_check(ctx, highlight, &app.theme_config.layout);
+        crate::components::device_calibration::render_dial_check(
+            ctx,
+            highlight,
+            &app.theme_config.layout,
+        );
     }
 }

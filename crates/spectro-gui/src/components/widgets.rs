@@ -1,6 +1,60 @@
 use crate::theme::{border_color, info_panel_color, muted_text_color};
 use eframe::egui;
 
+#[allow(dead_code)]
+#[derive(Default)]
+pub enum PanelSide {
+    #[default]
+    Left,
+    Right,
+}
+
+#[macro_export]
+macro_rules! render_dockable_panel {
+    ($ctx:expr, $id:expr, $title:expr, $is_detached:expr, $is_visible:expr, $default_width:expr, $side:ident, $content:expr) => {
+        if $is_detached {
+            let viewport_id = egui::ViewportId::from_hash_of($id);
+            $ctx.show_viewport_immediate(
+                viewport_id,
+                egui::ViewportBuilder::default()
+                    .with_title($title)
+                    .with_inner_size([$default_width, 600.0])
+                    .with_min_inner_size([300.0, 400.0]),
+                |ctx, class| {
+                    if class == egui::ViewportClass::Embedded {
+                        let mut open = true;
+                        egui::Window::new($title)
+                            .open(&mut open)
+                            .show(ctx, $content);
+                        if !open {
+                            *$is_visible = false;
+                        }
+                    } else {
+                        egui::CentralPanel::default().show(ctx, |ui| {
+                            let f = $content; // Re-bind closure to allow calling
+                            f(ui);
+                        });
+                        if ctx.input(|i| i.viewport().close_requested()) {
+                            *$is_visible = false;
+                        }
+                    }
+                },
+            );
+        } else {
+            // Fully qualified path to PanelSide to resolve scope issues
+            let side_enum = $crate::components::widgets::PanelSide::$side;
+            let panel = match side_enum {
+                $crate::components::widgets::PanelSide::Left => egui::SidePanel::left($id),
+                $crate::components::widgets::PanelSide::Right => egui::SidePanel::right($id),
+            };
+            panel
+                .resizable(true)
+                .default_width($default_width)
+                .show($ctx, $content);
+        }
+    };
+}
+
 pub fn render_bento_item<R>(
     ui: &mut egui::Ui,
     title: String,

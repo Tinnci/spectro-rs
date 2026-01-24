@@ -93,37 +93,139 @@ impl DisplayCalibrationState {
             }
         }
     }
+
+    pub fn start_session(&mut self) {
+        self.session = Some(CalibrationSession::new(
+            self.target_gamma,
+            illuminant::D65,
+            self.total_patches,
+        ));
+        self.prepare_measurement(CalibrationTarget::Ramp);
+        self.step = CalStep::Measure;
+    }
+
+    pub fn prepare_measurement(&mut self, target: CalibrationTarget) {
+        self.is_measuring = true;
+        self.current_target = target;
+    }
+
+    pub fn check_auto_advance(&mut self) -> bool {
+        if self.auto_advance && self.step == CalStep::Measure && !self.is_measuring {
+            self.prepare_measurement(CalibrationTarget::Ramp);
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn simulate_step(&mut self) {
+        if let Some(session) = &self.session {
+            let current_level = session.current_level().unwrap_or(0.0);
+            let simulated_y = current_level.powf(2.4) * 120.0 + (rand::random::<f32>() * 2.0);
+            let simulated_xyz = XYZ {
+                x: simulated_y * 0.95,
+                y: simulated_y,
+                z: simulated_y * 1.08,
+            };
+
+            // Re-use logic for handling a result
+            // Temporarily set measuring/target to satisfy check in handle_result if strict
+            // But handle_result logic for Ramp checks (session, measuring, step).
+            // Let's just manually update session since simulation is "god mode".
+
+            self.last_measured_y = Some(simulated_xyz.y);
+            // We need mutable access to session again, which we borrow checked above?
+            // Let's split this.
+        }
+
+        // Re-implementation to avoid borrow issues
+        if let Some(s) = &mut self.session {
+            let current_level = s.current_level().unwrap_or(0.0);
+            let simulated_y = current_level.powf(2.4) * 120.0 + (rand::random::<f32>() * 2.0);
+            let simulated_xyz = XYZ {
+                x: simulated_y * 0.95,
+                y: simulated_y,
+                z: simulated_y * 1.08,
+            };
+
+            self.last_measured_y = Some(simulated_xyz.y);
+            s.add_measurement(simulated_xyz);
+
+            if s.is_complete() {
+                self.generated_cal = Some(s.generate_cal());
+                self.step = CalStep::Result;
+                self.auto_advance = false;
+            }
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.step = CalStep::Intro;
+        self.session = None;
+        self.is_measuring = false;
+        self.auto_advance = false;
+        self.current_target = CalibrationTarget::None;
+        self.white_luminance = None;
+        self.black_luminance = None;
+        self.last_measured_y = None;
+        self.generated_cal = None;
+    }
 }
 
-pub struct CalibrationViewContext<'a> {
+#[derive(Default)]
+pub struct DisplayCalibrationView {
+    pub state: DisplayCalibrationState,
+}
+
+impl DisplayCalibrationView {
+    #[allow(dead_code)]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn handle_measurement(&mut self, xyz: XYZ) {
+        self.state.handle_result(xyz);
+    }
+
+    pub fn render(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &DisplayCalibrationContext,
+    ) -> CalibrationAction {
+        // 1. Render the active view
+        let action = match self.state.step {
+            CalStep::Intro => render_intro(ui, ctx, &mut self.state),
+            CalStep::Setup => render_setup(ui, ctx, &mut self.state),
+            CalStep::Measure => render_measure(ui, ctx, &mut self.state),
+            CalStep::Result => render_result(ui, ctx, &mut self.state),
+        };
+
+        // 2. Global Overlay Rendering (Top-Most Layer)
+        render_overlay(ui, ctx, &self.state);
+
+        action
+    }
+}
+
+pub struct DisplayCalibrationContext<'a> {
     pub layout: &'a crate::theme::LayoutConfig,
-    pub state: &'a mut DisplayCalibrationState,
     pub is_connected: bool,
     pub is_busy: bool,
 }
 
-pub fn render_calibration_view(
+// Private helpers
+fn render_overlay(
     ui: &mut egui::Ui,
-    ctx: &mut CalibrationViewContext,
-) -> CalibrationAction {
-    // 1. Render the active view
-    let action = match ctx.state.step {
-        CalStep::Intro => render_intro(ui, ctx),
-        CalStep::Setup => render_setup(ui, ctx),
-        CalStep::Measure => render_measure(ui, ctx),
-        CalStep::Result => render_result(ui, ctx),
-    };
-
-    // 2. Global Overlay Rendering (Top-Most Layer)
-    // We handle overlay logic here to ensure it covers EVERYTHING, including headers/sidebars if possible,
-    // and to share logic between Setup (ref measure) and Measure (ramp measure) steps.
-    let overlay_color = if ctx.state.is_measuring {
-        match ctx.state.current_target {
+    _ctx: &DisplayCalibrationContext,
+    state: &DisplayCalibrationState,
+) {
+    let overlay_color = if state.is_measuring {
+        match state.current_target {
             CalibrationTarget::White => Some(egui::Color32::WHITE),
             CalibrationTarget::Black => Some(egui::Color32::BLACK),
             CalibrationTarget::Ramp => {
                 // Get current ramp color from session
-                if let Some(session) = &ctx.state.session {
+                if let Some(session) = &state.session {
                     let level = session.current_level().unwrap_or(0.0);
                     let val = (level * 255.0) as u8;
                     Some(egui::Color32::from_gray(val))
@@ -153,9 +255,9 @@ pub fn render_calibration_view(
             egui::Color32::WHITE
         };
 
-        let status_text = match ctx.state.current_target {
+        let status_text = match state.current_target {
             CalibrationTarget::Ramp => {
-                if let Some(session) = &ctx.state.session {
+                if let Some(session) = &state.session {
                     let (idx, total) = session.progress();
                     format!("Measuring Step {}/{}\nRGB: {}", idx + 1, total, color.r())
                 } else {
@@ -179,11 +281,13 @@ pub fn render_calibration_view(
         ui.ctx()
             .output_mut(|o| o.cursor_icon = egui::CursorIcon::None);
     }
-
-    action
 }
 
-fn render_intro(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> CalibrationAction {
+fn render_intro(
+    ui: &mut egui::Ui,
+    ctx: &DisplayCalibrationContext,
+    state: &mut DisplayCalibrationState,
+) -> CalibrationAction {
     ui.centered_and_justified(|ui| {
         ui.vertical_centered(|ui| {
             ui.label(egui::RichText::new("🖥️").size(64.0));
@@ -205,14 +309,18 @@ fn render_intro(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> Calibrat
                 egui::Button::new("Begin Setup").min_size(egui::vec2(120.0, 40.0)),
             );
             if start_btn.clicked() {
-                ctx.state.step = CalStep::Setup;
+                state.step = CalStep::Setup;
             }
         });
     });
     CalibrationAction::None
 }
 
-fn render_setup(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> CalibrationAction {
+fn render_setup(
+    ui: &mut egui::Ui,
+    ctx: &DisplayCalibrationContext,
+    state: &mut DisplayCalibrationState,
+) -> CalibrationAction {
     let mut action = CalibrationAction::None;
     let visuals = ui.ctx().style().visuals.clone();
 
@@ -226,10 +334,10 @@ fn render_setup(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> Calibrat
             render_card(ui, "🎯 Target Parameters", 200.0, |ui| {
                 ui.vertical(|ui| {
                     ui.label("Gamma:");
-                    ui.add(egui::Slider::new(&mut ctx.state.target_gamma, 1.0..=3.0).step_by(0.1));
+                    ui.add(egui::Slider::new(&mut state.target_gamma, 1.0..=3.0).step_by(0.1));
                     ui.add_space(8.0);
                     ui.label("Samples:");
-                    ui.add(egui::Slider::new(&mut ctx.state.total_patches, 2..=33));
+                    ui.add(egui::Slider::new(&mut state.total_patches, 2..=33));
                 });
             });
 
@@ -238,7 +346,7 @@ fn render_setup(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> Calibrat
             // Card 2: White Reference
             render_card(ui, "⚪ White Reference", 180.0, |ui| {
                 ui.vertical_centered(|ui| {
-                    if let Some(w) = ctx.state.white_luminance {
+                    if let Some(w) = state.white_luminance {
                         ui.heading(format!("{:.1}", w));
                         ui.label("cd/m²");
                     } else {
@@ -246,8 +354,7 @@ fn render_setup(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> Calibrat
                     }
                     ui.add_space(8.0);
                     if ui.button("📸 Measure").clicked() {
-                        ctx.state.is_measuring = true;
-                        ctx.state.current_target = CalibrationTarget::White;
+                        state.prepare_measurement(CalibrationTarget::White);
                         action = CalibrationAction::RequestMeasurement;
                     }
                 });
@@ -258,7 +365,7 @@ fn render_setup(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> Calibrat
             // Card 3: Black Reference
             render_card(ui, "⚫ Black Reference", 180.0, |ui| {
                 ui.vertical_centered(|ui| {
-                    if let Some(b) = ctx.state.black_luminance {
+                    if let Some(b) = state.black_luminance {
                         ui.heading(format!("{:.3}", b));
                         ui.label("cd/m²");
                     } else {
@@ -266,8 +373,7 @@ fn render_setup(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> Calibrat
                     }
                     ui.add_space(8.0);
                     if ui.button("📸 Measure").clicked() {
-                        ctx.state.is_measuring = true;
-                        ctx.state.current_target = CalibrationTarget::Black;
+                        state.prepare_measurement(CalibrationTarget::Black);
                         action = CalibrationAction::RequestMeasurement;
                     }
                 });
@@ -278,9 +384,9 @@ fn render_setup(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> Calibrat
 
         ui.horizontal(|ui| {
             if ui.button("<< Back").clicked() {
-                ctx.state.step = CalStep::Intro;
+                state.step = CalStep::Intro;
             }
-            let is_ready = ctx.is_connected && ctx.state.white_luminance.is_some();
+            let is_ready = ctx.is_connected && state.white_luminance.is_some();
             let start_btn = egui::Button::new("Start Device Characteristic >>")
                 .min_size(egui::vec2(180.0, 40.0))
                 .fill(if is_ready {
@@ -290,16 +396,10 @@ fn render_setup(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> Calibrat
                 });
 
             if ui.add_enabled(is_ready, start_btn).clicked() {
-                ctx.state.session = Some(CalibrationSession::new(
-                    ctx.state.target_gamma,
-                    illuminant::D65,
-                    ctx.state.total_patches,
-                ));
-                ctx.state.current_target = CalibrationTarget::Ramp;
-                ctx.state.step = CalStep::Measure;
+                state.start_session();
             }
         });
-        if ctx.state.white_luminance.is_none() {
+        if state.white_luminance.is_none() {
             ui.add_space(8.0);
             ui.colored_label(egui::Color32::KHAKI, "⚠ Please measure white point first.");
         }
@@ -327,8 +427,12 @@ where
         });
 }
 
-fn render_measure(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> CalibrationAction {
-    let session = match &ctx.state.session {
+fn render_measure(
+    ui: &mut egui::Ui,
+    ctx: &DisplayCalibrationContext,
+    state: &mut DisplayCalibrationState,
+) -> CalibrationAction {
+    let session = match &state.session {
         Some(s) => s,
         None => return CalibrationAction::None,
     };
@@ -346,7 +450,7 @@ fn render_measure(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> Calibr
             gray_val, gray_val, gray_val
         ));
 
-        if let Some(y) = ctx.state.last_measured_y {
+        if let Some(y) = state.last_measured_y {
             ui.label(
                 egui::RichText::new(format!("Current: {:.2} cd/m²", y))
                     .color(egui::Color32::LIGHT_BLUE),
@@ -366,65 +470,50 @@ fn render_measure(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> Calibr
             ui.label("Measuring...");
         } else {
             // If we're in auto mode and not finished, trigger next measurement
-            if ctx.state.auto_advance && ctx.state.step == CalStep::Measure {
-                ctx.state.is_measuring = true;
-                ctx.state.current_target = CalibrationTarget::Ramp;
+            if state.check_auto_advance() {
                 action = CalibrationAction::RequestMeasurement;
             }
 
             ui.horizontal(|ui| {
                 if ui.button("📸 Measure Single").clicked() {
-                    ctx.state.is_measuring = true;
-                    ctx.state.auto_advance = false;
-                    ctx.state.current_target = CalibrationTarget::Ramp;
+                    state.auto_advance = false;
+                    state.prepare_measurement(CalibrationTarget::Ramp);
                     action = CalibrationAction::RequestMeasurement;
                 }
 
                 if ui.button("🚀 Auto Measure").clicked() {
-                    ctx.state.is_measuring = true;
-                    ctx.state.auto_advance = true;
-                    ctx.state.current_target = CalibrationTarget::Ramp;
+                    state.auto_advance = true;
+                    state.prepare_measurement(CalibrationTarget::Ramp);
                     action = CalibrationAction::RequestMeasurement;
                 }
 
                 if ui.button("💾 Simulate (Random)").clicked() {
-                    ctx.state.auto_advance = false;
-                    let simulated_y =
-                        current_level.powf(2.4) * 120.0 + (rand::random::<f32>() * 2.0);
-                    let simulated_xyz = XYZ {
-                        x: simulated_y * 0.95,
-                        y: simulated_y,
-                        z: simulated_y * 1.08,
-                    };
-
-                    if let Some(s) = &mut ctx.state.session {
-                        ctx.state.last_measured_y = Some(simulated_xyz.y);
-                        s.add_measurement(simulated_xyz);
-                        if s.is_complete() {
-                            ctx.state.generated_cal = Some(s.generate_cal());
-                            ctx.state.step = CalStep::Result;
-                        }
-                    }
+                    state.auto_advance = false;
+                    state.simulate_step();
                 }
             });
         }
 
         if ui.button("Back to Setup").clicked() {
-            ctx.state.step = CalStep::Setup;
-            ctx.state.is_measuring = false;
-            ctx.state.auto_advance = false;
+            state.step = CalStep::Setup;
+            state.is_measuring = false;
+            state.auto_advance = false;
         }
     });
 
     action
 }
 
-fn render_result(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> CalibrationAction {
+fn render_result(
+    ui: &mut egui::Ui,
+    _ctx: &DisplayCalibrationContext,
+    state: &mut DisplayCalibrationState,
+) -> CalibrationAction {
     ui.vertical_centered(|ui| {
         ui.heading("Calibration Complete");
         ui.add_space(10.0);
 
-        if let Some(cal) = &ctx.state.generated_cal {
+        if let Some(cal) = &state.generated_cal {
             ui.label("Generated Video LUT (256 steps)");
 
             // Plot the curves
@@ -460,9 +549,7 @@ fn render_result(ui: &mut egui::Ui, ctx: &mut CalibrationViewContext) -> Calibra
         }
 
         if ui.button("Restart").clicked() {
-            ctx.state.step = CalStep::Intro;
-            ctx.state.session = None;
-            ctx.state.is_measuring = false;
+            state.reset();
         }
     });
     CalibrationAction::None

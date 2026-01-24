@@ -12,14 +12,14 @@ use spectro_rs::{Illuminant, MeasurementMode, Observer, colorimetry::Lab};
 use std::time::Instant;
 
 use crate::backend;
-use crate::calibration::CalibrationWizard;
+use crate::components::device_calibration::CalibrationWizard;
 use crate::exporters::{self, HistoryExporter};
 use crate::inspector::DeviceInspector;
 use crate::shared::{DeviceCommand, ExtendedDeviceInfo, UIUpdate};
 use crate::t;
 use crate::theme::{ThemeConfig, panel_bg_dark_color};
-use crate::views::calibration::{
-    CalibrationAction, CalibrationViewContext, DisplayCalibrationState, render_calibration_view,
+use crate::views::display_calibration::{
+    CalibrationAction, DisplayCalibrationContext, DisplayCalibrationView,
 };
 use crate::views::measurement::render_measurement_view;
 
@@ -62,6 +62,7 @@ pub struct SpectroApp {
     pub(crate) show_history_panel: bool,
     pub(crate) show_history_detached: bool,
     pub(crate) inspector: DeviceInspector,
+    pub(crate) show_inspector: bool,
     pub(crate) diagnostics_report: Option<String>,
 
     // Theme and UX
@@ -82,7 +83,7 @@ pub struct SpectroApp {
     pub(crate) calibration_wizard: CalibrationWizard,
 
     // Display Calibration State
-    pub(crate) display_calibration: DisplayCalibrationState,
+    pub(crate) display_calibration: DisplayCalibrationView,
 }
 
 // ============================================================================
@@ -125,6 +126,7 @@ impl SpectroApp {
             show_history_panel: true,
             show_history_detached: false,
             inspector: DeviceInspector::new(),
+            show_inspector: true,
             theme_config,
             theme_dirty: false,
             current_view: AppView::default(),
@@ -134,7 +136,7 @@ impl SpectroApp {
             selected_illuminant: Illuminant::D65,
             selected_observer: Observer::CIE1931_2,
             calibration_wizard: CalibrationWizard::new(),
-            display_calibration: DisplayCalibrationState::default(),
+            display_calibration: DisplayCalibrationView::default(),
             diagnostics_report: None,
         }
     }
@@ -215,7 +217,7 @@ impl eframe::App for SpectroApp {
                 UIUpdate::Result(data, tm30) => {
                     let tm30_val = tm30.map(|b| *b);
                     if self.current_view == AppView::DisplayCalibration {
-                        self.display_calibration.handle_result(data.xyz);
+                        self.display_calibration.handle_measurement(data.xyz);
                     } else {
                         self.state
                             .add_measurement(data, tm30_val, self.selected_mode);
@@ -309,14 +311,13 @@ impl eframe::App for SpectroApp {
                 render_measurement_view(self, ctx);
             }
             AppView::DisplayCalibration => {
-                let mut cal_ctx = CalibrationViewContext {
+                let cal_ctx = DisplayCalibrationContext {
                     layout: &self.theme_config.layout,
-                    state: &mut self.display_calibration,
                     is_connected: self.is_connected,
                     is_busy: self.is_busy,
                 };
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    let action = render_calibration_view(ui, &mut cal_ctx);
+                    let action = self.display_calibration.render(ui, &cal_ctx);
                     match action {
                         CalibrationAction::RequestMeasurement => {
                             self.is_busy = true;
