@@ -350,6 +350,21 @@ fn render_setup(
                 });
             });
 
+            // VCGT Control
+            render_card(&mut cols[0], "Graphics Card (VCGT)", "🖥️", |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("Gamma Table:");
+                    if ui.button("⚡ Reset to Linear").clicked() {
+                        manager.reset_vcgt_to_linear();
+                    }
+                });
+                ui.label(
+                    egui::RichText::new("Use this to clear previous calibrations.")
+                        .weak()
+                        .size(11.0),
+                );
+            });
+
             // Right Column: Physical References
             render_card(&mut cols[1], "Sensor References", "📐", |ui| {
                 ui.vertical(|ui| {

@@ -1,6 +1,6 @@
 use spectro_rs::colorimetry::curves::{CalibrationSession, VideoCal};
 use spectro_rs::colorimetry::{XYZ, illuminant};
-use spectro_rs::display::vcgt::VcgtController;
+use spectro_rs::display::vcgt::{GammaController, VcgtController};
 use spectro_rs::display::{DisplayController, NativeDisplay};
 use spectro_rs::targen::TargetGenerator;
 
@@ -112,6 +112,15 @@ impl DisplayCalibrationManager {
         *self = Self::default();
     }
 
+    pub fn reset_vcgt_to_linear(&mut self) {
+        if self.vcgt.is_none() {
+            self.vcgt = VcgtController::new().ok();
+        }
+        if let Some(vcgt) = &self.vcgt {
+            let _ = vcgt.reset_gamma();
+        }
+    }
+
     /// Primary Interaction: User confirms sensor placement.
     pub fn confirm_user_position(&mut self) {
         if self.waiting_for_user_position {
@@ -142,7 +151,8 @@ impl DisplayCalibrationManager {
 
     pub fn start_session(&mut self) {
         // Generate patch sequence
-        let patches = TargetGenerator::gray_ramp(self.config.patch_count);
+        // Generate patch sequence (Optimized Sobol + Basic Anchors)
+        let patches = TargetGenerator::generate_optimized(self.config.patch_count);
 
         // Initialize the core session logic
         self.session = Some(CalibrationSession::new(
