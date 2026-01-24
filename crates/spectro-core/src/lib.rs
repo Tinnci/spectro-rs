@@ -93,6 +93,7 @@ pub const WAVELENGTHS: [f32; 41] = [
 pub mod cam02;
 pub mod colorimetry;
 pub mod device;
+pub mod display;
 pub mod i18n;
 pub mod icc;
 pub mod munki;
@@ -153,6 +154,8 @@ pub enum Observer {
     CIE1931_2,
     /// CIE 1964 10° Supplementary Standard Observer (Large field of view > 4°)
     CIE1964_10,
+    /// CIE 2015 2° Physiologically-based Standard Observer
+    CIE2015_2,
 }
 
 // ============================================================================

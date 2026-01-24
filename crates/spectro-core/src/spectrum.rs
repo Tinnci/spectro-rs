@@ -171,6 +171,7 @@ impl Colorimetry for SpectralData {
 
     fn to_xyz_emissive_ext(&self, obs: Observer) -> XYZ {
         const STEP: f32 = 10.0;
+        const KM: f32 = 683.0; // CIE photometric constant lm/W
         let (xb, yb, zb) = obs.get_cmfs();
         let mut x = 0.0f32;
         let mut y = 0.0f32;
@@ -181,9 +182,9 @@ impl Colorimetry for SpectralData {
             z += self.values[i] * zb[i];
         }
         XYZ {
-            x: x * STEP,
-            y: y * STEP,
-            z: z * STEP,
+            x: x * STEP * KM,
+            y: y * STEP * KM,
+            z: z * STEP * KM,
         }
     }
 
@@ -206,6 +207,7 @@ impl Colorimetry for SpectralData {
 
     fn to_xyz_emissive_2(&self) -> XYZ {
         const STEP: f32 = 10.0;
+        const KM: f32 = 683.0; // CIE photometric constant lm/W
         let mut x = 0.0f32;
         let mut y = 0.0f32;
         let mut z = 0.0f32;
@@ -215,14 +217,27 @@ impl Colorimetry for SpectralData {
             z += self.values[i] * Z_BAR_2[i];
         }
         XYZ {
-            x: x * STEP,
-            y: y * STEP,
-            z: z * STEP,
+            x: x * STEP * KM,
+            y: y * STEP * KM,
+            z: z * STEP * KM,
         }
     }
 
     fn to_xyz_10(&self) -> XYZ {
         const STEP: f32 = 10.0;
+        // Check mode to decide if we need Km.
+        // Note: to_xyz_10 is ambiguous in the trait definition regarding mode,
+        // but typically used for colorimetry.
+        // If we are in Emissive mode, we should apply Km.
+        let km = if matches!(
+            self.mode,
+            MeasurementMode::Emissive | MeasurementMode::Ambient
+        ) {
+            683.0
+        } else {
+            1.0 // Reflective is relative
+        };
+
         let mut x = 0.0f32;
         let mut y = 0.0f32;
         let mut z = 0.0f32;
@@ -232,9 +247,9 @@ impl Colorimetry for SpectralData {
             z += self.values[i] * Z_BAR_10[i];
         }
         XYZ {
-            x: x * STEP,
-            y: y * STEP,
-            z: z * STEP,
+            x: x * STEP * km,
+            y: y * STEP * km,
+            z: z * STEP * km,
         }
     }
 }

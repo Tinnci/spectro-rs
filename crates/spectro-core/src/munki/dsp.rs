@@ -245,15 +245,96 @@ impl SignalProcessor {
                     "DEBUG: Blind Zone Extrapolation: Valid=[{}-{}], R[first]={:.4}",
                     first, last, values[first]
                 );
-                // Use the next point inside (first + 1) for a more robust anchor.
-                let safe_anchor_idx = (first + 1).min(last);
-                metadata.insert("blue_anchor".into(), format!("Index {}", safe_anchor_idx));
-                let anchor_value = values[safe_anchor_idx];
+                println!("DEBUG: === Extrapolation Logic Start ===");
+                println!("DEBUG: Valid Range: [{}-{}]", first, last);
 
-                // Extrapolate UV/Blue (Left side) - include the 'first' band itself
-                for v in values.iter_mut().take(first + 1) {
+                // --- 局部最大值搜索 (Local Max Search) ---
+
+                // 向后搜 4 个点 (覆盖蓝光峰和青色谷)
+                let search_end = (first + 4).min(last);
+                let mut best_val = values[first];
+                let mut best_idx = first;
+
+                // 打印原始数据，看看“坑”在哪里
+                print!("DEBUG: Raw Scan: ");
+                let scan_end = (search_end + 2).min(values.len() - 1);
+                for (k, v) in values.iter().enumerate().take(scan_end + 1).skip(first) {
+                    print!("[{}]={:.4} ", k, v);
+
+                    if *v > best_val {
+                        best_val = *v;
+                        best_idx = k;
+                    }
+                }
+                println!(); // 换行
+
+                println!(
+                    "DEBUG: Found Peak at Index [{}] = {:.4}",
+                    best_idx, best_val
+                );
+
+                // --- 智能压限逻辑 (Smart Limiter) ---
+
+                // 计算绿光区 (Index 15-25) 的平均反射率，作为 "基准白"
+                let mut green_sum = 0.0;
+                let mut green_count = 0.0;
+                for k in 15..25 {
+                    if k < values.len() {
+                        green_sum += values[k];
+                        green_count += 1.0;
+                    }
+                }
+                let green_avg = if green_count > 0.0 {
+                    green_sum / green_count
+                } else {
+                    0.95
+                };
+
+                // --- 安全地板 (Safety Floor) ---
+                // 如果绿光太弱 (低于 0.01)，说明不是合法的测量信号。
+                // 此时我们放弃压限逻辑，直接回退到原始 best_val，防止归零自杀。
+                let anchor_value = if green_avg < 0.01 {
+                    best_val
+                } else {
+                    // 允许蓝光比绿光高一点点 (荧光效应)，但不超过 5% (1.05倍)
+                    let limit_val = green_avg * 1.05;
+
+                    if best_val > limit_val {
+                        println!(
+                            "DEBUG: Limiting Blue Anchor {:.4} -> {:.4} (Ref: {:.4})",
+                            best_val, limit_val, green_avg
+                        );
+                        limit_val
+                    } else {
+                        best_val
+                    }
+                };
+
+                // --- 修正后的赋值逻辑 ---
+
+                // 1. 向左外推 (Left Side): 毫无疑问，全部填满
+                for v in values.iter_mut().take(best_idx + 1) {
                     *v = anchor_value;
                 }
+
+                // 2. 向右填坑 (Fill the Cyan Gap):
+                // 这一步至关重要！我们要把峰值右边的 "深渊" (Index 7, 8...) 也填平。
+                // 我们向右延伸 3 个点 (足以覆盖 Index 8 的坑)，直到遇到数据回升或超出范围。
+                let fill_limit = (best_idx + 3).min(values.len() - 1).min(last);
+
+                for v in values.iter_mut().take(fill_limit + 1).skip(best_idx + 1) {
+                    // 只有当原始值 "掉下去" (小于锚点) 时才填充。
+                    // 这防止了万一后面紧接着更高的绿光峰，被我们误削了。
+                    if *v < anchor_value {
+                        *v = anchor_value;
+                    }
+                }
+
+                println!(
+                    "DEBUG: Filled [0-{}] (and gap to {}) with {:.4}",
+                    best_idx, fill_limit, anchor_value
+                );
+                println!("DEBUG: === Extrapolation Logic End ===");
 
                 // Extrapolate IR/Red (Right side)
                 let end_val = values[last];

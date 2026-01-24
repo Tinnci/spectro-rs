@@ -107,6 +107,7 @@ pub fn render_settings_window(ctx: &egui::Context, ui_ctx: &mut SettingsContext)
                         .selected_text(match ui_ctx.selected_observer {
                             Observer::CIE1931_2 => "2° (Standard)",
                             Observer::CIE1964_10 => "10° (Supplementary)",
+                            Observer::CIE2015_2 => "2° (CIE 2015)",
                         })
                         .show_ui(ui, |ui| {
                             if ui
@@ -124,6 +125,16 @@ pub fn render_settings_window(ctx: &egui::Context, ui_ctx: &mut SettingsContext)
                                     ui_ctx.selected_observer,
                                     Observer::CIE1964_10,
                                     "10° (CIE 1964 Large Field)",
+                                )
+                                .changed()
+                            {
+                                *ui_ctx.dirty = true;
+                            }
+                            if ui
+                                .selectable_value(
+                                    ui_ctx.selected_observer,
+                                    Observer::CIE2015_2,
+                                    "2° (CIE 2015 Physiological)",
                                 )
                                 .changed()
                             {

@@ -1,5 +1,6 @@
 use spectro_rs::colorimetry::curves::{CalibrationSession, VideoCal};
 use spectro_rs::colorimetry::{XYZ, illuminant};
+use spectro_rs::display::{DisplayController, NativeDisplay};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum CalibrationTarget {
@@ -69,6 +70,9 @@ pub struct DisplayCalibrationManager {
     pub current_target: CalibrationTarget,
     pub is_measuring: bool,
 
+    // Hardware Control
+    pub display: Option<NativeDisplay>,
+
     // User Interaction State
     pub waiting_for_user_position: bool,
     pub auto_start_timer: Option<f32>,
@@ -91,6 +95,7 @@ impl Default for DisplayCalibrationManager {
             result: None,
             current_target: CalibrationTarget::None,
             is_measuring: false,
+            display: None,
             waiting_for_user_position: false,
             auto_start_timer: None,
             pending_request: ManagerRequest::None,
@@ -123,6 +128,12 @@ impl DisplayCalibrationManager {
         self.waiting_for_user_position = true;
         self.auto_start_timer = None;
         self.pending_request = ManagerRequest::None;
+
+        // Ensure display is active if needed (e.g. for white/black point single measures)
+        if self.display.is_none() {
+            self.display = NativeDisplay::new().ok();
+        }
+        self.update_display_output();
     }
 
     pub fn start_session(&mut self) {
@@ -142,10 +153,40 @@ impl DisplayCalibrationManager {
         self.waiting_for_user_position = true;
         self.auto_start_timer = None;
         self.pending_request = ManagerRequest::None;
+
+        // Try initializing display control
+        if self.display.is_none() {
+            if let Ok(disp) = NativeDisplay::new() {
+                self.display = Some(disp);
+            } else {
+                eprintln!("Failed to initialize native display control");
+            }
+        }
+
+        // Show first patch
+        self.update_display_output();
     }
 
     pub fn can_start_characterization(&self) -> bool {
         self.readings.white_point.is_some()
+    }
+
+    fn update_display_output(&self) {
+        if let Some(display) = &self.display {
+            match self.current_target {
+                CalibrationTarget::White => display.show_color(1.0, 1.0, 1.0),
+                CalibrationTarget::Black => display.show_color(0.0, 0.0, 0.0),
+                CalibrationTarget::Ramp => {
+                    if let Some(level) = self.get_current_ramp_level() {
+                        display.show_color(level, level, level);
+                    }
+                }
+                CalibrationTarget::None => {
+                    // Maybe show gray or keep last?
+                    // Usually we don't clear until close.
+                }
+            }
+        }
     }
 
     pub fn get_status_text(&self) -> String {
@@ -205,6 +246,9 @@ impl DisplayCalibrationManager {
                 self.is_measuring = false;
             }
         }
+
+        // Update display for the NEXT state
+        self.update_display_output();
     }
 
     fn finish_calibration(&mut self) {
@@ -214,6 +258,11 @@ impl DisplayCalibrationManager {
             self.is_measuring = false;
             self.current_target = CalibrationTarget::None;
             self.config.auto_advance = false;
+
+            // Close the calibration window when finished
+            if let Some(disp) = self.display.take() {
+                drop(disp); // triggers close
+            }
         }
     }
 
