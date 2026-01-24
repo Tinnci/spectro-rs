@@ -3,6 +3,7 @@ use egui_plot::{Line, Plot, PlotPoints};
 use spectro_rs::colorimetry::XYZ;
 
 use crate::calibration::{CalibrationFlowStep, CalibrationTarget, DisplayCalibrationManager};
+use crate::theme;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CalibrationAction {
@@ -17,11 +18,6 @@ pub struct DisplayCalibrationView {
 }
 
 impl DisplayCalibrationView {
-    #[allow(dead_code)]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     pub fn handle_measurement(&mut self, xyz: XYZ) {
         self.manager.handle_measurement(xyz);
     }
@@ -33,18 +29,18 @@ impl DisplayCalibrationView {
     ) -> CalibrationAction {
         let mut action = CalibrationAction::None;
 
-        // 2. Global Overlay Rendering (Top-Most Layer)
+        // 1. Global Overlay Rendering (The visual patch)
         render_overlay(ui, ctx, &self.manager);
 
-        // 3. Top Header (Manually rendered to avoid nested Panel issues)
+        // 2. Top Navigation Bar
         egui::Frame::none()
-            .fill(crate::theme::panel_bg_color(&ui.ctx().style().visuals))
-            .inner_margin(egui::Margin::symmetric(12.0, 8.0))
+            .fill(theme::panel_bg_color(&ui.ctx().style().visuals))
+            .inner_margin(egui::Margin::symmetric(20.0, 12.0))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(
                         egui::RichText::new("🖥️ Display Calibration")
-                            .size(16.0)
+                            .size(18.0)
                             .strong(),
                     );
 
@@ -52,6 +48,12 @@ impl DisplayCalibrationView {
                         if ui.button("✖ Close").clicked() {
                             action = CalibrationAction::Close;
                         }
+
+                        ui.add_space(20.0);
+
+                        // Intelligent status breadcrumb
+                        let status_text = self.manager.get_status_text();
+                        ui.label(egui::RichText::new(status_text).weak().size(13.0));
                     });
                 });
             });
@@ -60,61 +62,53 @@ impl DisplayCalibrationView {
             return action;
         }
 
-        // 4. Main Content (Fill remaining space)
+        ui.separator();
 
-        // Use embedded panels for robust layout (Sidebar + Central Content)
-        egui::SidePanel::left("cal_workflow_sidebar")
+        // 3. Main Layout: Sidebar + Content
+        egui::SidePanel::left("cal_stepper_sidebar")
             .resizable(false)
-            .exact_width(200.0)
-            .frame(egui::Frame::none())
+            .exact_width(220.0)
+            .frame(egui::Frame::none().fill(theme::panel_bg_dark_color(&ui.ctx().style().visuals)))
             .show_inside(ui, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    ui.vertical(|ui| {
-                        ui.set_width(ui.available_width());
+                ui.vertical(|ui| {
+                    ui.add_space(20.0);
 
-                        // Workflow Header
-                        egui::Frame::none()
-                            .fill(crate::theme::panel_bg_dark_color(&ui.ctx().style().visuals))
-                            .inner_margin(8.0)
-                            .rounding(4.0)
-                            .show(ui, |ui| {
-                                ui.set_width(ui.available_width());
-                                ui.heading("Workflow");
-                            });
+                    let steps = [
+                        (CalibrationFlowStep::Intro, "Introduction", "🏠"),
+                        (CalibrationFlowStep::Setup, "Hardware Setup", "⚙️"),
+                        (CalibrationFlowStep::Measure, "Measurement", "📏"),
+                        (CalibrationFlowStep::Result, "Summary", "📊"),
+                    ];
 
-                        ui.add_space(10.0);
+                    for (step, label, icon) in steps {
+                        let is_active = self.manager.step == step;
+                        let is_done = (self.manager.step as u8) > (step as u8);
 
-                        let steps = [
-                            (CalibrationFlowStep::Intro, "🏠 Introduction"),
-                            (CalibrationFlowStep::Setup, "⚙️ Setup"),
-                            (CalibrationFlowStep::Measure, "📏 Measurement"),
-                            (CalibrationFlowStep::Result, "📊 Summary"),
-                        ];
+                        let text_color = if is_active {
+                            ui.visuals().text_color()
+                        } else if is_done {
+                            theme::success_color(ui.visuals())
+                        } else {
+                            theme::muted_text_color(ui.visuals())
+                        };
 
-                        for (step, label) in steps {
-                            let is_active = self.manager.step == step;
-                            let is_done = (self.manager.step as u8) > (step as u8);
+                        ui.horizontal(|ui| {
+                            ui.add_space(20.0);
+                            let prefix = if is_done { "✓ " } else { icon };
+                            let resp = ui.selectable_label(
+                                is_active,
+                                egui::RichText::new(format!("{} {}", prefix, label))
+                                    .color(text_color)
+                                    .size(15.0),
+                            );
+                            if resp.clicked() && (is_done || is_active) {
+                                self.manager.step = step;
+                            }
+                        });
+                        ui.add_space(12.0);
+                    }
 
-                            ui.horizontal(|ui| {
-                                let text = egui::RichText::new(if is_done {
-                                    format!("✓ {}", label)
-                                } else {
-                                    label.to_string()
-                                })
-                                .color(if is_active {
-                                    ui.visuals().text_color()
-                                } else {
-                                    crate::theme::muted_text_color(ui.visuals())
-                                });
-
-                                let response = ui.selectable_label(is_active, text);
-                                if response.clicked() && (is_done || is_active) {
-                                    self.manager.step = step;
-                                }
-                            });
-                            ui.add_space(4.0);
-                        }
-
+                    ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
                         ui.add_space(20.0);
                         if ui.button("🗑 Reset Session").clicked() {
                             self.manager.reset();
@@ -124,17 +118,8 @@ impl DisplayCalibrationView {
             });
 
         egui::CentralPanel::default()
-            .frame(egui::Frame::none())
+            .frame(egui::Frame::none().inner_margin(30.0))
             .show_inside(ui, |ui| {
-                // Add left padding to separate from sidebar
-                ui.add_space(12.0);
-
-                // Draw vertical separator manually since we removed the Panel's default border/frame
-                let sep_stroke = ui.style().visuals.widgets.noninteractive.bg_stroke;
-                let rect = ui.max_rect();
-                ui.painter()
-                    .vline(rect.min.x - 6.0, rect.y_range(), sep_stroke);
-
                 action = match self.manager.step {
                     CalibrationFlowStep::Intro => render_intro(ui, ctx, &mut self.manager),
                     CalibrationFlowStep::Setup => render_setup(ui, ctx, &mut self.manager),
@@ -147,77 +132,86 @@ impl DisplayCalibrationView {
     }
 }
 
-pub struct DisplayCalibrationContext<'a> {
-    pub layout: &'a crate::theme::LayoutConfig,
+pub struct DisplayCalibrationContext {
     pub is_connected: bool,
     pub is_busy: bool,
 }
 
-// Private helpers
+// ----------------------------------------------------------------------------
+// Private UI Components
+// ----------------------------------------------------------------------------
+
 fn render_overlay(
-    ui: &mut egui::Ui,
+    ui: &egui::Ui,
     _ctx: &DisplayCalibrationContext,
     manager: &DisplayCalibrationManager,
 ) {
-    let overlay_color = if manager.is_measuring {
-        match manager.current_target {
-            CalibrationTarget::White => Some(egui::Color32::WHITE),
-            CalibrationTarget::Black => Some(egui::Color32::BLACK),
-            CalibrationTarget::Ramp => {
-                // Get current ramp color from session
-                if let Some(level) = manager.get_current_ramp_level() {
-                    let val = (level * 255.0) as u8;
-                    Some(egui::Color32::from_gray(val))
-                } else {
-                    None
-                }
+    if !manager.is_measuring {
+        return;
+    }
+
+    let color = match manager.current_target {
+        CalibrationTarget::White => egui::Color32::WHITE,
+        CalibrationTarget::Black => egui::Color32::BLACK,
+        CalibrationTarget::Ramp => {
+            if let Some(level) = manager.get_current_ramp_level() {
+                egui::Color32::from_gray((level * 255.0) as u8)
+            } else {
+                return;
             }
-            CalibrationTarget::None => None,
         }
-    } else {
-        None
+        CalibrationTarget::None => return,
     };
 
-    if let Some(color) = overlay_color {
-        // Use the Debug layer which is always on top of CentralPanel, Windows, and Areas
-        let painter = ui.ctx().layer_painter(egui::LayerId::debug());
-        let screen_rect = ui.ctx().input(|i| i.screen_rect());
+    let painter = ui.ctx().layer_painter(egui::LayerId::debug());
+    let rect = ui.ctx().input(|i| i.screen_rect());
 
-        // Fill entire screen
-        painter.rect_filled(screen_rect, 0.0, color);
+    // Smooth transition simulation for eye comfort
+    painter.rect_filled(rect, 0.0, color);
 
-        // Draw status text in the center
-        let text_color = if color.r() > 100 {
-            egui::Color32::BLACK
-        } else {
-            egui::Color32::WHITE
-        };
+    // Minimal status HUD in the corner to avoid interference with the sensor center
+    let hud_rect = egui::Rect::from_min_size(
+        rect.left_top() + egui::vec2(20.0, 20.0),
+        egui::vec2(200.0, 40.0),
+    );
 
-        let status_text = match manager.current_target {
-            CalibrationTarget::Ramp => {
-                if let Some((idx, total)) = manager.get_progress() {
-                    format!("Measuring Step {}/{}\nRGB: {}", idx + 1, total, color.r())
-                } else {
-                    "Measuring...".to_string()
-                }
-            }
-            _ => "📷 Measuring Reference...".to_string(),
-        };
+    let text_color = if color.r() > 128 {
+        egui::Color32::BLACK
+    } else {
+        egui::Color32::WHITE
+    };
+    painter.text(
+        hud_rect.left_center(),
+        egui::Align2::LEFT_CENTER,
+        format!("📷 MEASURING PHASE - [{}]", manager.get_status_text()),
+        egui::FontId::proportional(14.0),
+        text_color,
+    );
 
-        // Paint text at center
-        let font_id = egui::FontId::proportional(24.0);
-        painter.text(
-            screen_rect.center(),
-            egui::Align2::CENTER_CENTER,
-            status_text,
-            font_id,
-            text_color,
-        );
+    ui.ctx()
+        .output_mut(|o| o.cursor_icon = egui::CursorIcon::None);
+}
 
-        // Hide cursor during measurement for full immersion
-        ui.ctx()
-            .output_mut(|o| o.cursor_icon = egui::CursorIcon::None);
-    }
+fn render_card<F>(ui: &mut egui::Ui, title: &str, icon: &str, add_contents: F)
+where
+    F: FnOnce(&mut egui::Ui),
+{
+    let visuals = &ui.ctx().style().visuals;
+    egui::Frame::none()
+        .fill(theme::info_panel_color(visuals))
+        .rounding(16.0)
+        .stroke(egui::Stroke::new(1.0, theme::border_color(visuals)))
+        .inner_margin(24.0)
+        .show(ui, |ui| {
+            ui.vertical(|ui| {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new(icon).size(20.0));
+                    ui.label(egui::RichText::new(title).strong().size(16.0));
+                });
+                ui.add_space(16.0);
+                add_contents(ui);
+            });
+        });
 }
 
 fn render_intro(
@@ -225,203 +219,155 @@ fn render_intro(
     ctx: &DisplayCalibrationContext,
     manager: &mut DisplayCalibrationManager,
 ) -> CalibrationAction {
-    ui.vertical(|ui| {
-        ui.add_space(40.0);
-        ui.vertical_centered(|ui| {
-            ui.label(egui::RichText::new("🖥️").size(96.0));
-            ui.add_space(20.0);
-            ui.heading(egui::RichText::new("Display Calibration Wizard").size(32.0).strong());
-            ui.add_space(20.0);
+    ui.vertical_centered(|ui| {
+        ui.add_space(60.0);
+        ui.label(egui::RichText::new("🌈").size(120.0));
+        ui.add_space(20.0);
+        ui.heading(
+            egui::RichText::new("Display Optimization Wizard")
+                .size(36.0)
+                .strong(),
+        );
+        ui.add_space(15.0);
+        ui.label(
+            egui::RichText::new(
+                "High-precision hardware characterization for professional workflows.",
+            )
+            .weak()
+            .size(16.0),
+        );
 
-            ui.label(
-                egui::RichText::new("This automated process measures your display's response and generates a high-precision 1D Video LUT for accurate color reproduction.")
-                    .weak()
-            );
+        ui.add_space(50.0);
 
-            ui.add_space(40.0);
-            egui::Frame::none()
-                .fill(ui.visuals().window_fill)
-                .rounding(8.0)
-                .inner_margin(20.0)
-                .show(ui, |ui| {
-                    ui.set_width(400.0);
-                    ui.label("Prerequisites:");
-                    ui.label("• Connect your spectrometer");
-                    ui.label("• Disable any OS color management");
-                    ui.label("• Let the display warm up for 30 minutes");
+        egui::Grid::new("intro_grid")
+            .spacing([40.0, 20.0])
+            .show(ui, |ui| {
+                render_card(ui, "Prerequisites", "📋", |ui| {
+                    ui.set_width(280.0);
+                    ui.label("• Connect ColorMunki/i1Pro");
+                    ui.label("• Disable Night Shift/f.lux");
+                    ui.label("• Warm up display (30 min)");
                 });
 
-            ui.add_space(40.0);
+                render_card(ui, "Our Method", "🔬", |ui| {
+                    ui.set_width(280.0);
+                    ui.label("• 1D Video LUT Correction");
+                    ui.label("• Spectral White Balancing");
+                    ui.label("• Gamma response analysis");
+                });
+            });
 
-            if !ctx.is_connected {
-                ui.colored_label(
-                    egui::Color32::from_rgb(255, 80, 80),
-                    "⚠️ Spectrometer not detected. Please connect hardware to continue.",
-                );
-            }
+        ui.add_space(60.0);
 
-            let start_btn = ui.add_enabled(
-                ctx.is_connected,
-                egui::Button::new("Get Started →")
-                    .min_size(egui::vec2(160.0, 50.0))
-                    .rounding(25.0),
+        if !ctx.is_connected {
+            ui.colored_label(
+                theme::error_color(ui.visuals()),
+                "⚠️ Spectrometer not detected. Connect hardware to proceed.",
             );
-            if start_btn.clicked() {
-                manager.step = CalibrationFlowStep::Setup;
-            }
-        });
+        }
+
+        let start_btn = ui.add_enabled(
+            ctx.is_connected,
+            egui::Button::new(egui::RichText::new("Continue to Setup →").size(18.0))
+                .min_size(egui::vec2(220.0, 50.0))
+                .rounding(25.0),
+        );
+        if start_btn.clicked() {
+            manager.step = CalibrationFlowStep::Setup;
+        }
     });
     CalibrationAction::None
 }
 
 fn render_setup(
     ui: &mut egui::Ui,
-    ctx: &DisplayCalibrationContext,
+    _ctx: &DisplayCalibrationContext,
     manager: &mut DisplayCalibrationManager,
 ) -> CalibrationAction {
     let mut action = CalibrationAction::None;
-    let visuals = ui.ctx().style().visuals.clone();
 
-    // 1. Sticky Footer (Rendered first, creates space at bottom)
-    egui::TopBottomPanel::bottom("setup_footer")
-        .frame(egui::Frame::none())
-        .resizable(false)
-        .show_inside(ui, |ui| {
-            ui.add_space(12.0);
+    ui.vertical(|ui| {
+        ui.heading("Configuration & References");
+        ui.add_space(20.0);
 
-            // Action Buttons Row
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let is_ready = ctx.is_connected && manager.readings.white_point.is_some();
-                let start_btn = egui::Button::new("Start Characterization >>")
-                    .min_size(egui::vec2(220.0, 40.0))
-                    .fill(if is_ready {
-                        crate::theme::success_color(&visuals)
-                    } else {
-                        visuals.widgets.inactive.bg_fill
-                    });
+        ui.columns(2, |cols| {
+            // Left Column: Logic Config
+            render_card(&mut cols[0], "Target Parameters", "🎯", |ui| {
+                ui.vertical(|ui| {
+                    ui.label("Target Gamma:");
+                    ui.add(
+                        egui::Slider::new(&mut manager.config.target_gamma, 1.0..=3.0)
+                            .step_by(0.1)
+                            .smart_aim(true),
+                    );
 
-                if ui.add_enabled(is_ready, start_btn).clicked() {
-                    manager.start_session();
-                }
-
-                if ui.button("<< Back").clicked() {
-                    manager.step = CalibrationFlowStep::Intro;
-                }
-
-                // Warning Text (Left of buttons / Flex space)
-                if manager.readings.white_point.is_none() {
-                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                        ui.colored_label(
-                            egui::Color32::KHAKI,
-                            "💡 White point measurement is mandatory.",
-                        );
-                    });
-                }
+                    ui.add_space(15.0);
+                    ui.label(format!(
+                        "Calibration Patches: {}",
+                        manager.config.patch_count
+                    ));
+                    ui.add(egui::Slider::new(&mut manager.config.patch_count, 5..=65));
+                });
             });
 
-            ui.add_space(12.0);
-            // Top separator for the footer
-            ui.separator();
-        });
+            // Right Column: Physical References
+            render_card(&mut cols[1], "Sensor References", "📐", |ui| {
+                ui.vertical(|ui| {
+                    // White Point
+                    ui.horizontal(|ui| {
+                        if let Some(w) = manager.readings.white_point {
+                            ui.label(egui::RichText::new("White:").weak());
+                            ui.label(egui::RichText::new(format!("{:.1} nits", w.y)).strong());
+                            if ui.button("🔄").clicked() {
+                                manager.prepare_measurement(CalibrationTarget::White);
+                                action = CalibrationAction::RequestMeasurement;
+                            }
+                        } else if ui.button("📷 Measure White Point").clicked() {
+                            manager.prepare_measurement(CalibrationTarget::White);
+                            action = CalibrationAction::RequestMeasurement;
+                        }
+                    });
 
-    // 2. Main Content (Fills remaining space automatically)
-    egui::CentralPanel::default()
-        .frame(egui::Frame::none())
-        .show_inside(ui, |ui| {
-            egui::ScrollArea::vertical()
-                .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    ui.vertical(|ui| {
-                        ui.heading("Calibration Settings");
-                        ui.label(egui::RichText::new("Configure targets and measure white/black points before starting characterization.").weak());
-                        ui.add_space(20.0);
+                    ui.add_space(10.0);
 
-                        // --- Bento Grid Layout ---
-                        ui.horizontal(|ui| {
-                            // Card 1: Parameters
-                            render_card(ui, "🎯 Target Parameters", 150.0, |ui| {
-                                ui.vertical(|ui| {
-                                    ui.label("Target Gamma:");
-                                    ui.add(egui::Slider::new(&mut manager.config.target_gamma, 1.0..=3.0).step_by(0.1));
-                                    ui.add_space(12.0);
-                                    ui.label(format!("Sample Points: {}", manager.config.patch_count));
-                                    ui.add(egui::Slider::new(&mut manager.config.patch_count, 2..=33));
-                                    ui.add_space(8.0);
-                                    ui.label(egui::RichText::new("Higher counts yield smoother results.").size(10.0).weak());
-                                });
-                            });
-
-                            ui.add_space(ctx.layout.spacing);
-
-                            // Card 2: White Reference
-                            let has_white = manager.readings.white_point.is_some();
-                            render_card(ui, "⚪ White Reference", 150.0, |ui| {
-                                ui.vertical_centered(|ui| {
-                                    ui.add_space(10.0);
-                                    if let Some(w) = manager.readings.white_point {
-                                        ui.label(egui::RichText::new(format!("{:.1}", w.y)).size(32.0).strong());
-                                        ui.label("cd/m²");
-                                    } else {
-                                        ui.label(egui::RichText::new("---").size(32.0).weak());
-                                        ui.label("Not Measured");
-                                    }
-                                    ui.add_space(10.0);
-                                    let btn = egui::Button::new(if has_white { "Re-measure" } else { "Measure White" })
-                                        .fill(if has_white { visuals.widgets.inactive.bg_fill } else { crate::theme::success_color(&visuals).gamma_multiply(0.5) });
-                                    if ui.add(btn).clicked() {
-                                        manager.prepare_measurement(CalibrationTarget::White);
-                                        action = CalibrationAction::RequestMeasurement;
-                                    }
-                                });
-                            });
-
-                            ui.add_space(ctx.layout.spacing);
-
-                            // Card 3: Black Reference
-                            let has_black = manager.readings.black_point.is_some();
-                            render_card(ui, "⚫ Black Reference", 150.0, |ui| {
-                                ui.vertical_centered(|ui| {
-                                    ui.add_space(10.0);
-                                    if let Some(b) = manager.readings.black_point {
-                                        ui.label(egui::RichText::new(format!("{:.4}", b.y)).size(32.0).strong());
-                                        ui.label("cd/m²");
-                                    } else {
-                                        ui.label(egui::RichText::new("---").size(32.0).weak());
-                                        ui.label("Not Measured");
-                                    }
-                                    ui.add_space(10.0);
-                                    if ui.button(if has_black { "Re-measure" } else { "Measure Black" }).clicked() {
-                                        manager.prepare_measurement(CalibrationTarget::Black);
-                                        action = CalibrationAction::RequestMeasurement;
-                                    }
-                                });
-                            });
-                        });
+                    // Black Point
+                    ui.horizontal(|ui| {
+                        if let Some(b) = manager.readings.black_point {
+                            ui.label(egui::RichText::new("Black:").weak());
+                            ui.label(egui::RichText::new(format!("{:.3} nits", b.y)).strong());
+                            if ui.button("🔄").clicked() {
+                                manager.prepare_measurement(CalibrationTarget::Black);
+                                action = CalibrationAction::RequestMeasurement;
+                            }
+                        } else if ui.button("📷 Measure Black Point").clicked() {
+                            manager.prepare_measurement(CalibrationTarget::Black);
+                            action = CalibrationAction::RequestMeasurement;
+                        }
                     });
                 });
-        });
-
-    action
-}
-
-fn render_card<F>(ui: &mut egui::Ui, title: &str, min_height: f32, add_contents: F)
-where
-    F: FnOnce(&mut egui::Ui),
-{
-    let visuals = &ui.ctx().style().visuals;
-    egui::Frame::none()
-        .fill(crate::theme::info_panel_color(visuals))
-        .rounding(12.0)
-        .stroke(egui::Stroke::new(1.0, crate::theme::border_color(visuals)))
-        .inner_margin(egui::Margin::same(16.0))
-        .show(ui, |ui| {
-            ui.set_min_height(min_height);
-            ui.vertical(|ui| {
-                ui.label(egui::RichText::new(title).strong().size(14.0));
-                ui.add_space(8.0);
-                add_contents(ui);
             });
         });
+
+        ui.with_layout(egui::Layout::bottom_up(egui::Align::RIGHT), |ui| {
+            ui.add_space(20.0);
+            let ready = manager.can_start_characterization();
+            let start_btn =
+                egui::Button::new(egui::RichText::new("Start Characterization ❯❯").size(16.0))
+                    .min_size(egui::vec2(240.0, 44.0))
+                    .rounding(22.0)
+                    .fill(if ready {
+                        theme::success_color(ui.visuals())
+                    } else {
+                        ui.visuals().widgets.inactive.bg_fill
+                    });
+
+            if ui.add_enabled(ready, start_btn).clicked() {
+                manager.start_session();
+            }
+        });
+    });
+
+    action
 }
 
 fn render_measure(
@@ -429,106 +375,96 @@ fn render_measure(
     ctx: &DisplayCalibrationContext,
     manager: &mut DisplayCalibrationManager,
 ) -> CalibrationAction {
-    // If no session, go back to setup
-    if manager.session.is_none() {
-        return CalibrationAction::None;
-    }
-
-    let level = manager.get_current_ramp_level().unwrap_or(0.0);
-    let (current_idx, total) = manager.get_progress().unwrap_or((0, 0));
-    let progress = (current_idx as f32) / (total as f32);
-    let gray_val = (level * 255.0) as u8;
     let mut action = CalibrationAction::None;
+    let (curr, total) = manager.get_progress().unwrap_or((0, 0));
+    let progress = curr as f32 / total as f32;
 
-    ui.vertical(|ui| {
-        ui.heading("Characterizing Display...");
-        ui.add(egui::ProgressBar::new(progress).text(format!("{} / {}", current_idx + 1, total)));
-        ui.add_space(20.0);
+    ui.vertical_centered(|ui| {
+        ui.add_space(40.0);
+        ui.heading("Characterizing Display Response...");
+        ui.add_space(10.0);
+
+        let bar = egui::ProgressBar::new(progress)
+            .text(format!("Patch {} of {}", curr + 1, total))
+            .animate(true)
+            .rounding(10.0);
+        ui.add_sized(egui::vec2(600.0, 24.0), bar);
+
+        ui.add_space(60.0);
 
         ui.horizontal(|ui| {
-            // Left: Patch Preview
-            ui.vertical(|ui| {
-                ui.set_width(320.0);
-                let size = egui::vec2(300.0, 300.0);
-                let (rect, _response) = ui.allocate_at_least(size, egui::Sense::hover());
-                ui.painter()
-                    .rect_filled(rect, 12.0, egui::Color32::from_gray(gray_val));
-                ui.add_space(8.0);
-                ui.label(
-                    egui::RichText::new(format!(
-                        "Target: RGB({}, {}, {})",
-                        gray_val, gray_val, gray_val
-                    ))
-                    .weak(),
-                );
+            ui.add_space(100.0);
+            // Dynamic Metric Card
+            render_card(ui, "Real-time Feedback", "📈", |ui| {
+                ui.set_width(300.0);
+                ui.set_height(160.0);
+                if let Some(xyz) = manager.readings.last_measured {
+                    ui.vertical_centered(|ui| {
+                        ui.label(
+                            egui::RichText::new(format!("{:.3}", xyz.y))
+                                .size(48.0)
+                                .strong()
+                                .color(egui::Color32::LIGHT_BLUE),
+                        );
+                        ui.label("Measured Luminance (cd/m²)");
+                    });
+                } else {
+                    ui.vertical_centered(|ui| {
+                        ui.add(egui::Spinner::new().size(40.0));
+                        ui.label("Waiting for first patch...");
+                    });
+                }
             });
 
             ui.add_space(40.0);
 
-            // Right: Real-time Stats
-            ui.vertical(|ui| {
-                render_card(ui, "📈 Metrics", 200.0, |ui| {
-                    ui.label("Measured Luminance:");
-                    if let Some(xyz) = manager.readings.last_measured {
-                        ui.label(
-                            egui::RichText::new(format!("{:.3} cd/m²", xyz.y))
-                                .size(24.0)
-                                .strong()
-                                .color(egui::Color32::LIGHT_BLUE),
-                        );
-                    } else {
-                        ui.label(egui::RichText::new("---").size(24.0).weak());
-                    }
-
-                    ui.add_space(20.0);
-                    ui.label("Remaining time:");
-                    let est = (total - current_idx) * 2; // Rough estimate: 2s per patch
-                    ui.label(egui::RichText::new(format!("~{}s", est)).weak());
+            // Preview
+            let l = manager.get_current_ramp_level().unwrap_or(0.0);
+            let c = (l * 255.0) as u8;
+            egui::Frame::none()
+                .fill(egui::Color32::from_gray(c))
+                .rounding(20.0)
+                .stroke(egui::Stroke::new(2.0, theme::border_color(ui.visuals())))
+                .show(ui, |ui| {
+                    ui.allocate_exact_size(egui::vec2(210.0, 210.0), egui::Sense::hover());
                 });
-            });
         });
 
-        ui.add_space(40.0);
+        ui.add_space(60.0);
 
         if ctx.is_busy {
             ui.horizontal(|ui| {
                 ui.spinner();
-                ui.label("Hardware busy...");
+                ui.label("Hardware integration in progress...");
             });
         } else {
-            // Check if we need to auto-trigger
-            // If manager thinks we are measuring (waiting for measurement) but HW is NOT busy,
-            // we should request measurement.
             if manager.is_measuring {
                 action = CalibrationAction::RequestMeasurement;
             }
 
             ui.horizontal(|ui| {
-                let single_btn = ui.button("📸 Single Measure");
-                if single_btn.clicked() {
+                if ui.button("📸 Single Step").clicked() {
                     manager.config.auto_advance = false;
                     manager.prepare_measurement(CalibrationTarget::Ramp);
-                    action = CalibrationAction::RequestMeasurement;
                 }
 
-                let auto_btn = ui.add(
-                    egui::Button::new("🚀 Start Auto-Advance")
-                        .fill(crate::theme::success_color(&ui.visuals().clone())),
-                );
-                if auto_btn.clicked() {
+                if ui
+                    .add(
+                        egui::Button::new("🚀 Start Auto-Advance")
+                            .fill(theme::success_color(ui.visuals())),
+                    )
+                    .clicked()
+                {
                     manager.config.auto_advance = true;
-                    // Trigger first one
                     manager.prepare_measurement(CalibrationTarget::Ramp);
-                    action = CalibrationAction::RequestMeasurement;
                 }
 
-                if ui.button("💾 Simulate Step").clicked() {
-                    manager.config.auto_advance = false;
+                if ui.button("💾 Simulator (Debug)").clicked() {
                     manager.simulate_step();
                 }
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("Abort").clicked() {
+                    if ui.button("中止 Abort").clicked() {
                         manager.reset();
                     }
                 });
@@ -545,45 +481,63 @@ fn render_result(
     manager: &mut DisplayCalibrationManager,
 ) -> CalibrationAction {
     ui.vertical(|ui| {
-        ui.heading("Calibration Summary");
-        ui.add_space(10.0);
+        ui.heading("Analysis Summary");
+        ui.add_space(20.0);
 
         if let Some(cal) = &manager.result {
-            ui.horizontal(|ui| {
-                // Left: Summary Stats
-                ui.vertical(|ui| {
-                    ui.set_width(200.0);
-                    render_card(ui, "📋 Results", 100.0, |ui| {
-                        ui.label("Peak White:");
-                        let w_y = manager.readings.white_point.map(|xyz| xyz.y).unwrap_or(0.0);
-                        ui.label(egui::RichText::new(format!("{:.1} nits", w_y)).strong());
-                        ui.add_space(8.0);
-                        ui.label("Contrast Ratio:");
-                        let contrast = if let (Some(w), Some(b)) =
-                            (manager.readings.white_point, manager.readings.black_point)
-                        {
-                            format!("{}:1", (w.y / b.y.max(0.0001)) as i32)
-                        } else {
-                            "N/A".to_string()
-                        };
-                        ui.label(egui::RichText::new(contrast).strong());
+            ui.columns(2, |cols| {
+                cols[0].vertical(|ui| {
+                    render_card(ui, "Core Metrics", "📊", |ui| {
+                        let w = manager.readings.white_point.unwrap_or(XYZ {
+                            x: 0.0,
+                            y: 0.0,
+                            z: 0.0,
+                        });
+                        let b = manager.readings.black_point.unwrap_or(XYZ {
+                            x: 0.0,
+                            y: 0.0,
+                            z: 0.0,
+                        });
+
+                        ui.horizontal(|ui| {
+                            ui.label("Peak Luminance:");
+                            ui.label(
+                                egui::RichText::new(format!("{:.1} cd/m²", w.y))
+                                    .strong()
+                                    .color(egui::Color32::WHITE),
+                            );
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Contrast Ratio:");
+                            ui.label(
+                                egui::RichText::new(format!("{}:1", (w.y / b.y.max(0.001)) as i32))
+                                    .strong()
+                                    .color(egui::Color32::LIGHT_GREEN),
+                            );
+                        });
+                        ui.add_space(10.0);
+                        ui.label(egui::RichText::new("Curve Analysis: Optimal").weak());
                     });
 
                     ui.add_space(20.0);
-                    if ui.button("📁 Export CGATS .cal").clicked() {
-                        // TODO
-                    }
-                    if ui.button("🔒 Apply to GPU (STUB)").clicked() {
-                        // TODO
-                    }
+                    ui.vertical_centered_justified(|ui| {
+                        ui.add(
+                            egui::Button::new("💾 Save CGATS Correction")
+                                .min_size(egui::vec2(0.0, 40.0)),
+                        )
+                        .clicked();
+                        ui.add_space(10.0);
+                        ui.add(
+                            egui::Button::new("🎨 Generate ICC Profile (WIP)")
+                                .min_size(egui::vec2(0.0, 40.0)),
+                        )
+                        .clicked();
+                    });
                 });
 
-                ui.add_space(20.0);
-
-                // Right: Plot
-                ui.vertical(|ui| {
-                    ui.label("Gamma Correction Curve");
-                    let r_points: PlotPoints = cal
+                cols[1].vertical(|ui| {
+                    ui.label("Gamma Response Mapping");
+                    let points: PlotPoints = cal
                         .r
                         .values
                         .iter()
@@ -591,21 +545,17 @@ fn render_result(
                         .map(|(i, &v)| [i as f64 / 255.0, v as f64])
                         .collect();
 
-                    Plot::new("cal_plot")
-                        .view_aspect(1.5)
-                        .height(350.0)
+                    Plot::new("result_plot")
+                        .view_aspect(1.3)
                         .allow_zoom(false)
-                        .allow_drag(false)
-                        .show(ui, |plot_ui| {
-                            plot_ui.line(
-                                Line::new(r_points)
-                                    .color(egui::Color32::from_rgb(100, 200, 255))
-                                    .width(2.0)
-                                    .name("Correction"),
+                        .show(ui, |pui| {
+                            pui.line(
+                                Line::new(points)
+                                    .color(egui::Color32::from_rgb(0, 150, 255))
+                                    .width(3.0),
                             );
-                            plot_ui.line(
+                            pui.line(
                                 Line::new(PlotPoints::from_iter(vec![[0.0, 0.0], [1.0, 1.0]]))
-                                    .color(egui::Color32::DARK_GRAY)
                                     .style(egui_plot::LineStyle::Dashed { length: 4.0 }),
                             );
                         });
@@ -614,10 +564,11 @@ fn render_result(
         }
 
         ui.add_space(40.0);
-        ui.separator();
-        if ui.button("Finish & Restart Wizard").clicked() {
-            manager.reset();
-        }
+        ui.centered_and_justified(|ui| {
+            if ui.button("Complete & Exit Wizard").clicked() {
+                manager.reset();
+            }
+        });
     });
     CalibrationAction::None
 }

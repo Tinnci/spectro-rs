@@ -106,6 +106,33 @@ impl DisplayCalibrationManager {
         self.is_measuring = true;
     }
 
+    pub fn can_start_characterization(&self) -> bool {
+        self.readings.white_point.is_some()
+    }
+
+    pub fn get_status_text(&self) -> String {
+        match self.step {
+            CalibrationFlowStep::Intro => "Ready to begin display optimization".to_string(),
+            CalibrationFlowStep::Setup => {
+                if self.readings.white_point.is_none() {
+                    "Waiting for white point reference...".to_string()
+                } else if self.readings.black_point.is_none() {
+                    "Optional: Measure black point for better contrast accuracy".to_string()
+                } else {
+                    "System calibrated. Ready for patch sequence.".to_string()
+                }
+            }
+            CalibrationFlowStep::Measure => {
+                if let Some((idx, total)) = self.get_progress() {
+                    format!("Analyzing gamut response: Patch {} of {}", idx + 1, total)
+                } else {
+                    "Initializing sensor sequence...".to_string()
+                }
+            }
+            CalibrationFlowStep::Result => "Optimization complete. Review and export.".to_string(),
+        }
+    }
+
     pub fn handle_measurement(&mut self, xyz: XYZ) {
         self.readings.last_measured = Some(xyz);
 

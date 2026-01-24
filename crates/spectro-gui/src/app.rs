@@ -320,7 +320,6 @@ impl eframe::App for SpectroApp {
             }
             AppView::DisplayCalibration => {
                 let cal_ctx = DisplayCalibrationContext {
-                    layout: &self.theme_config.layout,
                     is_connected: self.is_connected,
                     is_busy: self.is_busy,
                 };
