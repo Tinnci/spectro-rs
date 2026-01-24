@@ -11,6 +11,8 @@ pub mod macos;
 #[cfg(target_os = "macos")]
 pub use macos::NativeDisplay;
 
+pub mod vcgt;
+
 // Placeholder for other platforms
 #[cfg(not(target_os = "macos"))]
 pub struct NativeDisplay;

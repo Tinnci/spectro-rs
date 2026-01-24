@@ -100,6 +100,7 @@ pub mod munki;
 pub mod persistence;
 pub mod spectrum;
 pub mod sprague;
+pub mod targen;
 pub mod tm30;
 pub mod tm30_data;
 pub mod tm30_data_cmf;
