@@ -1,6 +1,8 @@
 use spectro_rs::colorimetry::curves::{CalibrationSession, VideoCal};
 use spectro_rs::colorimetry::{XYZ, illuminant};
+use spectro_rs::display::vcgt::VcgtController;
 use spectro_rs::display::{DisplayController, NativeDisplay};
+use spectro_rs::targen::TargetGenerator;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum CalibrationTarget {
@@ -72,6 +74,7 @@ pub struct DisplayCalibrationManager {
 
     // Hardware Control
     pub display: Option<NativeDisplay>,
+    pub vcgt: Option<VcgtController>,
 
     // User Interaction State
     pub waiting_for_user_position: bool,
@@ -96,6 +99,7 @@ impl Default for DisplayCalibrationManager {
             current_target: CalibrationTarget::None,
             is_measuring: false,
             display: None,
+            vcgt: None,
             waiting_for_user_position: false,
             auto_start_timer: None,
             pending_request: ManagerRequest::None,
@@ -137,12 +141,16 @@ impl DisplayCalibrationManager {
     }
 
     pub fn start_session(&mut self) {
+        // Generate patch sequence
+        let patches = TargetGenerator::gray_ramp(self.config.patch_count);
+
         // Initialize the core session logic
         self.session = Some(CalibrationSession::new(
             self.config.target_gamma,
             illuminant::D65,
-            self.config.patch_count,
+            patches,
         ));
+
         self.current_target = CalibrationTarget::Ramp;
         self.step = CalibrationFlowStep::Measure;
 
@@ -156,11 +164,14 @@ impl DisplayCalibrationManager {
 
         // Try initializing display control
         if self.display.is_none() {
-            if let Ok(disp) = NativeDisplay::new() {
-                self.display = Some(disp);
-            } else {
-                eprintln!("Failed to initialize native display control");
-            }
+            self.display = NativeDisplay::new().ok();
+        }
+
+        // Initialize VCGT
+        if self.vcgt.is_none() {
+            self.vcgt = VcgtController::new().ok();
+            // TODO: Ideally reset VCGT here to ensure raw state
+            // if let Some(vcgt) = &self.vcgt { let _ = vcgt.reset_gamma(); }
         }
 
         // Show first patch
@@ -177,8 +188,8 @@ impl DisplayCalibrationManager {
                 CalibrationTarget::White => display.show_color(1.0, 1.0, 1.0),
                 CalibrationTarget::Black => display.show_color(0.0, 0.0, 0.0),
                 CalibrationTarget::Ramp => {
-                    if let Some(level) = self.get_current_ramp_level() {
-                        display.show_color(level, level, level);
+                    if let Some(patch) = self.session.as_ref().and_then(|s| s.current_patch()) {
+                        display.show_color(patch.r, patch.g, patch.b);
                     }
                 }
                 CalibrationTarget::None => {

@@ -3,6 +3,9 @@ use core_graphics::display::{CGDirectDisplayID, CGMainDisplayID};
 
 #[link(name = "CoreGraphics", kind = "framework")]
 unsafe extern "C" {
+    /// Sets the gamma table for the specified display using Core Graphics.
+    /// This is a transient change and will be lost on color profile switch or reboot.
+    /// Corresponds to ArgyllCMS `dispwin_set_ramdac`.
     fn CGDisplaySetTransferByTable(
         display: CGDirectDisplayID,
         tableSize: u32,

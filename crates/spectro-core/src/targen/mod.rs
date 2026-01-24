@@ -62,4 +62,41 @@ impl TargetGenerator {
         }
         patches
     }
+
+    /// Generate an optimized set of patches using a Sobol sequence.
+    ///
+    /// This ensures uniform coverage of the gamut volume using a low-discrepancy sequence,
+    /// which is superior to random sampling for characterization.
+    /// It always includes the essential "anchor" points (Black, White, Primaries).
+    pub fn generate_optimized(count: usize) -> Vec<Patch> {
+        // 1. Start with essential verification patches
+        let mut patches = Self::basic_verification();
+
+        // If we already have more than requested, truncate (unlikely but safe)
+        if patches.len() >= count {
+            patches.truncate(count);
+            return patches;
+        }
+
+        // 2. Generate remaining points using Sobol sequence
+        let remaining = count - patches.len();
+        // Skip first few (e.g. 16) to avoid 0s and correlation artifacts
+        let offset = 16;
+
+        let mut id = patches.len();
+
+        for i in 0..remaining {
+            // The sobol_burley 0.5.0 API uses a free function `sample(index, dimension, seed)`
+            let idx = (i + offset) as u32;
+
+            let r = sobol_burley::sample(idx, 0, 0); // Dim 0
+            let g = sobol_burley::sample(idx, 1, 0); // Dim 1
+            let b = sobol_burley::sample(idx, 2, 0); // Dim 2
+
+            patches.push(Patch::new(id, r, g, b));
+            id += 1;
+        }
+
+        patches
+    }
 }

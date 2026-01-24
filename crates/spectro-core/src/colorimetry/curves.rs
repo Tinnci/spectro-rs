@@ -195,36 +195,41 @@ impl DisplayCalibrator {
     }
 }
 
+use crate::targen::Patch;
+
 /// Manages a stateful display calibration session.
 /// This acts as the SSOT for the measurement sequence and progress.
 pub struct CalibrationSession {
     pub calibrator: DisplayCalibrator,
-    pub steps: Vec<f32>,
+    pub steps: Vec<Patch>,
     pub current_idx: usize,
 }
 
 impl CalibrationSession {
-    pub fn new(target_gamma: f32, target_white_point: XYZ, num_steps: usize) -> Self {
-        let mut steps = Vec::with_capacity(num_steps);
-        for i in 0..num_steps {
-            steps.push(i as f32 / (num_steps - 1) as f32);
-        }
-
+    pub fn new(target_gamma: f32, target_white_point: XYZ, patches: Vec<Patch>) -> Self {
         Self {
             calibrator: DisplayCalibrator::new(target_gamma, target_white_point),
-            steps,
+            steps: patches,
             current_idx: 0,
         }
     }
 
     /// Returns the input drive level for the current step.
-    pub fn current_level(&self) -> Option<f32> {
+    pub fn current_patch(&self) -> Option<Patch> {
         self.steps.get(self.current_idx).copied()
+    }
+
+    // Legacy support for simple ramp
+    pub fn current_level(&self) -> Option<f32> {
+        self.current_patch().map(|p| p.r) // Assume gray for now
     }
 
     /// Records a measurement for the current step and advances.
     pub fn add_measurement(&mut self, xyz: XYZ) -> bool {
-        if let Some(level) = self.current_level() {
+        if let Some(patch) = self.current_patch() {
+            // For 1D calibration, we currently assume grayscale patches (r=g=b)
+            // Use Green channel or average as the 'input' level for the curve
+            let level = patch.g;
             self.calibrator.add_measurement(level, xyz);
             self.current_idx += 1;
             true
