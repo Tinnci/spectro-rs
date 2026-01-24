@@ -6,7 +6,7 @@ unsafe extern "C" {
     /// Sets the gamma table for the specified display using Core Graphics.
     /// This is a transient change and will be lost on color profile switch or reboot.
     /// Corresponds to ArgyllCMS `dispwin_set_ramdac`.
-    fn CGDisplaySetTransferByTable(
+    fn CGSetDisplayTransferByTable(
         display: CGDirectDisplayID,
         tableSize: u32,
         redTable: *const f32,
@@ -37,7 +37,7 @@ impl GammaController for VcgtController {
         }
 
         let res = unsafe {
-            CGDisplaySetTransferByTable(
+            CGSetDisplayTransferByTable(
                 self.display_id,
                 count,
                 red.as_ptr(),
