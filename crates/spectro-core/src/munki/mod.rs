@@ -702,7 +702,52 @@ impl<T: Transport> Spectrometer for Munki<T> {
                     }
                 }
                 Err(e) => {
-                    writeln!(report, "Error at {}s: {}", t, e).unwrap();
+                    writeln!(report, "{:<10.3} | ERROR: {}", t, e).unwrap();
+                }
+            }
+        }
+
+        writeln!(report).unwrap();
+        writeln!(report, "--- Dark Current Stability (Thermal Drift) ---").unwrap();
+        writeln!(
+            report,
+            "{:<10} | {:<10} | {:<10} | Comment",
+            "Time(s)", "Avg Count", "Max Count"
+        )
+        .unwrap();
+        writeln!(
+            report,
+            "----------------------------------------------------------"
+        )
+        .unwrap();
+
+        let dark_times = [0.1, 1.0, 2.0, 4.0, 5.0, 6.0];
+
+        for &t in dark_times.iter() {
+            // Measure Dark Frame (Lamp OFF)
+            match self.measure_integration(t, false, false) {
+                Ok(raw) => {
+                    let max_val = raw.iter().max().copied().unwrap_or(0);
+                    let avg_val = raw.iter().map(|&x| x as f64).sum::<f64>() / raw.len() as f64;
+
+                    // Simple heuristic for noise/thermal
+                    let comment = if avg_val > 2500.0 {
+                        "High Noise"
+                    } else if avg_val > 2000.0 {
+                        "Elevated"
+                    } else {
+                        "Clean"
+                    };
+
+                    writeln!(
+                        report,
+                        "{:<10.1} | {:<10.1} | {:<10} | {}",
+                        t, avg_val, max_val, comment
+                    )
+                    .unwrap();
+                }
+                Err(e) => {
+                    writeln!(report, "{:<10.1} | ERROR: {}", t, e).unwrap();
                 }
             }
         }

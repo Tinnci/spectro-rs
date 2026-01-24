@@ -54,6 +54,7 @@ pub enum ManagerRequest {
     #[default]
     None,
     Measure(spectro_rs::MeasurementMode),
+    TestSensor,
 }
 
 pub struct DisplayCalibrationManager {

@@ -334,6 +334,12 @@ impl eframe::App for SpectroApp {
                                 ))
                                 .ok();
                         }
+                        CalibrationAction::RunDiagnostics => {
+                            self.is_busy = true;
+                            self.cmd_tx.send(DeviceCommand::TestSensor).ok();
+                            self.diagnostics_report = None;
+                            self.current_view = AppView::Diagnostics;
+                        }
                         CalibrationAction::Close => {
                             self.current_view = AppView::Measurement;
                         }

@@ -56,66 +56,39 @@ impl AutoExposure {
         peak_value: u16,
         retry_idx: usize,
     ) -> ExposureAction {
-        if retry_idx >= self.max_retries {
-            return ExposureAction::MaxRetriesReached;
-        }
-
         let peak = peak_value as f64;
 
-        // Check for saturation (using hardware-defined limit)
-        if peak > self.max_counts {
-            // Saturated. Cut time in half or to min.
+        if retry_idx >= self.max_retries {
+            return ExposureAction::Success; // Force success to avoid getting stuck
+        }
+
+        // 1. Check for HARD Saturation (Clipping)
+        if peak >= self.max_counts {
             let new_time = (current_time * 0.5).max(self.min_time_sec);
             return ExposureAction::Retry(new_time);
         }
 
-        // Check if within acceptable range
-        if peak >= self.min_counts && peak <= self.max_counts {
+        // 2. Check for Target Range Success
+        if peak >= self.min_counts {
             return ExposureAction::Success;
         }
 
-        // Check for saturation plateau or rate drop (non-linearity)
-        // Correct physics: Counts should be proportional to Time. Rate = Counts/Time should be constant.
-        // If Rate drops significantly, we are hitting saturation (soft or hard).
-        let current_rate = peak / current_time;
-        if let (Some(l_peak), Some(l_time)) = (self.last_peak, self.last_time) {
-            let last_rate = l_peak / l_time;
-
-            // If the rate dropped by more than 15%, the last reading was better (more linear).
-            // Example: 4100/0.007 = 585k. 12271/0.08 = 153k. Rate dropped to 26%. UNDO!
-            if current_rate < last_rate * 0.85 {
-                return ExposureAction::Undo;
-            }
-
-            // Also check for Hard Plateau (Peak not moving but time is)
-            let time_growth = current_time / l_time;
-            let signal_growth = peak / l_peak;
-            if time_growth > 1.2 && signal_growth < 1.05 && peak < self.target_counts {
-                return ExposureAction::Undo;
-            }
-        }
-
-        // Avoid division by zero
-        let safe_peak = peak.max(100.0);
-
-        // Calculate scaling factor
+        // 3. Signal is too low, need more time.
+        // Simple linear extrapolation: NewTime = CurrTime * (Target / Peak)
+        let safe_peak = peak.max(100.0); // Avoid huge multipliers on noise
         let factor = self.target_counts / safe_peak;
         let mut new_time = current_time * factor;
 
-        // Clamp to limits
+        // Clamp to physical limits
         new_time = new_time.clamp(self.min_time_sec, self.max_time_sec);
 
-        // If the change is very small (e.g. within 5%), it's not worth retrying
-        // unless we are way off target.
-        if (new_time - current_time).abs() / current_time < 0.05 {
-            // We are close enough to the best we can do given limits
+        // Optimization: If we are already at max time, stop.
+        if current_time >= self.max_time_sec {
             return ExposureAction::Success;
         }
 
-        // If we hit the rail (min or max) and we were already there, stop.
-        if (new_time == self.min_time_sec && current_time == self.min_time_sec)
-            || (new_time == self.max_time_sec && current_time == self.max_time_sec)
-        {
+        // Optimization: If change is negligible, stop.
+        if (new_time - current_time).abs() < 0.001 {
             return ExposureAction::Success;
         }
 

@@ -8,6 +8,7 @@ use crate::theme;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CalibrationAction {
     RequestMeasurement,
+    RunDiagnostics,
     Close,
     None,
 }
@@ -147,6 +148,9 @@ impl DisplayCalibrationView {
             match req {
                 crate::calibration::ManagerRequest::Measure(_) => {
                     action = CalibrationAction::RequestMeasurement;
+                }
+                crate::calibration::ManagerRequest::TestSensor => {
+                    action = CalibrationAction::RunDiagnostics;
                 }
                 crate::calibration::ManagerRequest::None => {}
             }
@@ -390,6 +394,12 @@ fn render_setup(
 
         ui.with_layout(egui::Layout::bottom_up(egui::Align::RIGHT), |ui| {
             ui.add_space(20.0);
+
+            if ui.button("🛠 Thermal Drift Test").clicked() {
+                manager.pending_request = crate::calibration::ManagerRequest::TestSensor;
+            }
+            ui.add_space(10.0);
+
             let ready = manager.can_start_characterization();
             let start_btn =
                 egui::Button::new(egui::RichText::new("Start Characterization ❯❯").size(16.0))
