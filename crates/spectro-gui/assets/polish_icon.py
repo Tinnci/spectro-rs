@@ -37,10 +37,19 @@ def add_fine_grain(image, intensity=4):
     image.paste(final_rgb, (0,0), image.getchannel('A'))
     return image
 
-def refine_icon_v14(input_path, output_path):
-    print("Initializing Zoom-In Mode (115% scale)...")
+def refine_icon_hig(input_path, output_path):
+    """
+    Refines the icon following macOS Human Interface Guidelines (HIG).
+    - Canvas: 1024x1024
+    - Main Subject Zone: ~80% (approx 824px)
+    - SSAA Pipeline: 2048px -> 1024px using Lanczos
+    """
+    print("Initializing HIG-Compliant SSAA Pipeline (80% Subject Rule)...")
     RENDER_SIZE = 2048 
     TARGET_SIZE = 1024
+    # HIG Recommendation: Subject takes about 80-82% of the canvas
+    # Standard macOS icon grid safe-zone is approx 82.4%
+    HIG_SCALE = 0.824 
     
     img_orig = Image.open(input_path).convert("RGBA")
     
@@ -65,40 +74,57 @@ def refine_icon_v14(input_path, output_path):
     content = img_orig.crop(bbox)
     content.putalpha(s_mask.crop(bbox))
     
-    # --- Step 2: Assemble at High-Res (Zoomed In) ---
+    # --- Step 2: Assemble at High-Res (2048px) ---
+    # Create the full render canvas (will have transparent margins in the end)
     render_canvas = Image.new("RGBA", (RENDER_SIZE, RENDER_SIZE), (0, 0, 0, 0))
     
-    # INCREASING SCALE to 115% of RENDER_SIZE to "cut off" outer parts
-    # This creates a "Zoomed In" look where the prism fills the whole squircle
+    # Calculate the size of the "Card" (the squircle container)
+    card_render_size = int(RENDER_SIZE * HIG_SCALE)
+    
+    # Apply the 115% zoom relative to the CARD size (User likes this crop)
     zoom_factor = 1.15
-    fill_size = int(RENDER_SIZE * zoom_factor)
+    subject_render_size = int(card_render_size * zoom_factor)
     
     aspect = content.width / content.height
-    new_w, new_h = (fill_size, int(fill_size/aspect)) if aspect > 1 else (int(fill_size*aspect), fill_size)
+    new_w, new_h = (subject_render_size, int(subject_render_size/aspect)) if aspect > 1 else (int(subject_render_size*aspect), subject_render_size)
     
+    # Scale content
     content_hi = content.resize((new_w, new_h), Image.Resampling.LANCZOS)
-    render_canvas.paste(content_hi, ((RENDER_SIZE-new_w)//2, (RENDER_SIZE-new_h)//2), content_hi)
     
-    # --- Step 3: Apply Texture and Squircle at High-Res ---
-    render_canvas = add_fine_grain(render_canvas, intensity=5)
+    # Create an intermediate layer for the card to apply the mask
+    card_layer = Image.new("RGBA", (RENDER_SIZE, RENDER_SIZE), (0, 0, 0, 0))
+    # Paste subject centered
+    paste_pos = ((RENDER_SIZE - new_w) // 2, (RENDER_SIZE - new_h) // 2)
+    card_layer.paste(content_hi, paste_pos, content_hi)
     
-    squircle = draw_squircle_mask((RENDER_SIZE, RENDER_SIZE), n=4.8)
-    # The mask will now clip the enlarged content
-    final_alpha = ImageChops.multiply(render_canvas.getchannel('A'), squircle)
-    render_canvas.putalpha(final_alpha)
+    # --- Step 3: Apply Texture and HIG Squircle ---
+    card_layer = add_fine_grain(card_layer, intensity=5)
     
-    # --- Step 4: Final SSAA Downsampling ---
-    print(f"Downsampling to {TARGET_SIZE} (SSAA)...")
-    final_img = render_canvas.resize((TARGET_SIZE, TARGET_SIZE), Image.Resampling.LANCZOS)
+    # Generate Squircle at CARD size
+    squircle_base = draw_squircle_mask((card_render_size, card_render_size), n=4.8)
     
-    final_a = final_img.getchannel('A').filter(ImageFilter.GaussianBlur(radius=0.5))
+    # Create full-size mask for the card layer
+    full_mask = Image.new("L", (RENDER_SIZE, RENDER_SIZE), 0)
+    mask_offset = (RENDER_SIZE - card_render_size) // 2
+    full_mask.paste(squircle_base, (mask_offset, mask_offset))
+    
+    # Mask the card layer
+    final_alpha = ImageChops.multiply(card_layer.getchannel('A'), full_mask)
+    card_layer.putalpha(final_alpha)
+    
+    # --- Step 4: Final SSAA Downsampling (Lanczos) ---
+    print(f"Downsampling to {TARGET_SIZE} via Lanczos (Final SSAA)...")
+    final_img = card_layer.resize((TARGET_SIZE, TARGET_SIZE), Image.Resampling.LANCZOS)
+    
+    # Subtle polish on alpha for perfect transparency transitions
+    final_a = final_img.getchannel('A').filter(ImageFilter.GaussianBlur(radius=0.3))
     final_img.putalpha(final_a)
     
     final_img.save(output_path, "PNG")
-    print(f"Zoomed-In Icon V14 saved to {output_path}")
+    print(f"HIG-Compliant Icon saved to {output_path}")
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
         print("Usage: python3 polish_icon.py input.png output.png")
     else:
-        refine_icon_v14(sys.argv[1], sys.argv[2])
+        refine_icon_hig(sys.argv[1], sys.argv[2])
