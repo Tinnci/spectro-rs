@@ -9,14 +9,21 @@ use crate::{Illuminant, MeasurementMode, Observer};
 pub struct MeasurementResult {
     pub spectrum: SpectralData,
     /// CIE 1931 XYZ (D50 adapted)
+    /// Units:
+    /// - Emissive: Absolute [cd/m²] (nits) for Y
+    /// - Reflective: Relative [0.0 - 100.0] normalized to Y=100
     pub xyz: XYZ,
     /// CIE L*a*b* (D50 illuminant)
+    /// Units: Dimensionless (Perceptual Uniform Space)
     pub lab: crate::colorimetry::Lab,
     /// sRGB (0-1 range, D65)
+    /// Units: Normalized [0.0 - 1.0] (Linear before Gamma)
     pub rgb: (f32, f32, f32),
     /// Correlated Color Temperature (K)
+    /// Units: Kelvin [K]
     pub cct: f32,
     /// Color Rendering Index (Ra) - Placeholder for now
+    /// Units: Index [0.0 - 100.0]
     pub cri: Option<f32>,
 }
 
@@ -65,6 +72,11 @@ impl MeasurementResult {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SpectralData {
     pub wavelengths: Vec<f32>,
+    /// Spectral Power Distribution Values
+    /// Units:
+    /// - Reflective: Direct Reflectance Factor [0.0 - 1.0] (Dimensionless)
+    /// - Emissive: Spectral Radiance [mW/(m²·sr·nm)] (Milliwatts per sq meter per steradian per nanometer)
+    ///   Note: This unit choice is specific to ColorMunki DSP logic (ArgyllCMS legacy).
     pub values: Vec<f32>,
     /// Measurement mode affects XYZ calculation method
     pub mode: MeasurementMode,
@@ -171,8 +183,13 @@ impl Colorimetry for SpectralData {
 
     fn to_xyz_emissive_ext(&self, obs: Observer) -> XYZ {
         const STEP: f32 = 10.0;
-        // Input SPD is in mW/nm/m² (Argyll convention), so we divide Km by 1000.
-        const KM: f32 = 0.683; // 683 lm/W / 1000 mW/W
+        // Calculation: Y = 683 * ∫ S(λ) * V(λ) dλ
+        // Input SPD S(λ) is in [mW/(m²·sr·nm)].
+        // Step D(λ) is 10nm.
+        // Standard Km = 683 [lm/W].
+        // To convert input [mW] to output [lm], we scale Km by 1e-3.
+        // Km' = 683 [lm/W] * 0.001 [W/mW] = 0.683 [lm/mW].
+        const KM: f32 = 0.683;
         let (xb, yb, zb) = obs.get_cmfs();
         let mut x = 0.0f32;
         let mut y = 0.0f32;
@@ -235,9 +252,9 @@ impl Colorimetry for SpectralData {
             self.mode,
             MeasurementMode::Emissive | MeasurementMode::Ambient
         ) {
-            0.683
+            0.683 // [lm/mW] for Emissive (mW inputs) -> [cd/m²]
         } else {
-            1.0 // Reflective is relative
+            1.0 // Reflective is relative (Y=100 scale factor applied later)
         };
 
         let mut x = 0.0f32;
