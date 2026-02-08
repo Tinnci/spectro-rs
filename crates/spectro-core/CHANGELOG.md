@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.8](https://github.com/Tinnci/spectro-rs/compare/spectro-rs-v0.3.7...spectro-rs-v0.3.8) (2026-01-24)
+
+
+### Features
+
+* Add CIE 2015 Observer and Native Display Calibration ([d6c901e](https://github.com/Tinnci/spectro-rs/commit/d6c901e1128db54502ba5c26effb7682bd39e0f0))
+* Add VCGT control and Target Generator ([ff95a7f](https://github.com/Tinnci/spectro-rs/commit/ff95a7f7d83f835218902c431d960b18497a0cf4))
+* **display:** Update NativeDisplay to use centered patch window ([365b4cb](https://github.com/Tinnci/spectro-rs/commit/365b4cbb2eb6af2e62ec177d50fb43a1df852b71))
+* Implement Advanced Target Generation and Integrate VCGT ([7028068](https://github.com/Tinnci/spectro-rs/commit/7028068291d365ede2d6cd2db0449bcec142e49b))
+
+
+### Bug Fixes
+
+* **core:** Adjust photometric constant Km for mW input ([d3ea34c](https://github.com/Tinnci/spectro-rs/commit/d3ea34c25a4037807683218467047af5d15eb144))
+* **core:** Fix physics model bias application in DSP ([4649f5f](https://github.com/Tinnci/spectro-rs/commit/4649f5f6d3104ca095354a068b5fee4b900d14b0))
+* **core:** Use correct CoreGraphics symbol CGSetDisplayTransferByTable ([373d941](https://github.com/Tinnci/spectro-rs/commit/373d941900db6a398e4722ae72bcd7adfb95deb5))
+
 ## [0.3.7](https://github.com/Tinnci/spectro-rs/compare/spectro-rs-v0.3.6...spectro-rs-v0.3.7) (2026-01-23)
 
 
