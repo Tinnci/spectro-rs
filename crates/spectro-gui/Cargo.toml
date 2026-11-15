@@ -14,7 +14,7 @@ keywords = ["spectrometer", "colormunki", "colorimetry", "egui"]
 spectro-rs = { version = "0.3.6", path = "../spectro-core" }
 eframe = "0.29.0"
 egui = "0.29.0"
-egui_plot = "0.29.0"
+egui_plot = "0.38.0"
 rand = "0.8"
 crossbeam-channel = "0.5.13"
 chrono = "0.4"
