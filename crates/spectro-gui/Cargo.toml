@@ -12,18 +12,18 @@ keywords = ["spectrometer", "colormunki", "colorimetry", "egui"]
 
 [dependencies]
 spectro-rs = { version = "0.3.6", path = "../spectro-core" }
-eframe = "0.29.0"
-egui = "0.29.0"
-egui_plot = "0.29.0"
-rand = "0.8"
+eframe = "0.37.0"
+egui = "0.37.0"
+egui_plot = "0.38.0"
+rand = "0.10"
 crossbeam-channel = "0.5.13"
 chrono = "0.4"
-rfd = "0.15"
+rfd = "0.18"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 rust-embed = "8.4.0"
-i18n-embed = { version = "0.14.1", features = ["fluent-system", "desktop-requester"] }
-i18n-embed-fl = "0.8.0"
+i18n-embed = { version = "0.16.0", features = ["fluent-system", "desktop-requester"] }
+i18n-embed-fl = "0.10.1"
 unic-langid = { version = "0.9", features = ["macros"] }
 sys-locale = "0.3.1"
 image = { version = "0.25.9", features = ["png"] }
