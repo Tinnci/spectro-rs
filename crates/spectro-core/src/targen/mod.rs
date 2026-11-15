@@ -83,9 +83,7 @@ impl TargetGenerator {
         // Skip first few (e.g. 16) to avoid 0s and correlation artifacts
         let offset = 16;
 
-        let mut id = patches.len();
-
-        for i in 0..remaining {
+        for (i, id) in (patches.len()..).enumerate().take(remaining) {
             // The sobol_burley 0.5.0 API uses a free function `sample(index, dimension, seed)`
             let idx = (i + offset) as u32;
 
@@ -94,7 +92,6 @@ impl TargetGenerator {
             let b = sobol_burley::sample(idx, 2, 0); // Dim 2
 
             patches.push(Patch::new(id, r, g, b));
-            id += 1;
         }
 
         patches
