@@ -1,4 +1,4 @@
 {
-    "crates/spectro-core": "0.3.7",
-    "crates/spectro-gui": "0.3.7"
+    "crates/spectro-core": "0.3.8",
+    "crates/spectro-gui": "0.3.8"
 }

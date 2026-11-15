@@ -1,6 +1,6 @@
 [package]
 name = "spectro-gui"
-version = "0.3.7"
+version = "0.3.8"
 edition = "2024"
 authors = ["Tinnci <shisoratsu@icloud.com>"]
 description = "Graphical User Interface for the spectro-rs spectrometer driver suite"
